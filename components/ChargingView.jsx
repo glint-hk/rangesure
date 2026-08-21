@@ -1,8 +1,11 @@
 'use client';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 
 const RouteMap = dynamic(() => import('./RouteMap'), { ssr: false });
+
+const MIN_QUERY_LENGTH = 3;
+const DEBOUNCE_MS = 450;
 
 export default function ChargingView() {
   const [place, setPlace] = useState('');
@@ -11,10 +14,13 @@ export default function ChargingView() {
   const [center, setCenter] = useState(null);
   const [stations, setStations] = useState([]);
   const [searched, setSearched] = useState(false);
+  const requestId = useRef(0);
+  const debounceRef = useRef(null);
 
-  const search = async () => {
-    const query = place.trim();
-    if (!query) return;
+  // Guarded by requestId so a slow response from an earlier keystroke can never
+  // overwrite the result of a more recent one.
+  const runSearch = async (query) => {
+    const id = ++requestId.current;
     setLoading(true);
     setError(null);
     setSearched(true);
@@ -26,6 +32,7 @@ export default function ChargingView() {
         body: JSON.stringify({ place: query }),
       });
       const geo = await geoRes.json();
+      if (id !== requestId.current) return; // superseded by a newer search
       if (!geoRes.ok) throw new Error(geo.error || 'Location lookup failed.');
       setCenter([geo.lat, geo.lon]);
 
@@ -35,14 +42,45 @@ export default function ChargingView() {
         body: JSON.stringify({ lat: geo.lat, lon: geo.lon, distance_km: 50 }),
       });
       const chargeData = await chargeRes.json();
+      if (id !== requestId.current) return;
       if (!chargeRes.ok) throw new Error(chargeData.error || 'Charger lookup failed.');
       setStations(chargeData.stations || []);
     } catch (err) {
+      if (id !== requestId.current) return;
       setError(err.message || 'Something went wrong. Please try again.');
       setStations([]);
     } finally {
-      setLoading(false);
+      if (id === requestId.current) setLoading(false);
     }
+  };
+
+  // Debounced search-as-you-type — waits for a pause in typing so every keystroke
+  // doesn't fire a request, and requires a few characters before bothering ORS at all.
+  useEffect(() => {
+    const query = place.trim();
+    clearTimeout(debounceRef.current);
+
+    if (query.length < MIN_QUERY_LENGTH) {
+      requestId.current += 1; // invalidate any in-flight search
+      setLoading(false);
+      setSearched(false);
+      setError(null);
+      setStations([]);
+      setCenter(null);
+      return;
+    }
+
+    debounceRef.current = setTimeout(() => runSearch(query), DEBOUNCE_MS);
+    return () => clearTimeout(debounceRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [place]);
+
+  const handleKeyDown = (e) => {
+    if (e.key !== 'Enter') return;
+    const query = place.trim();
+    if (query.length < MIN_QUERY_LENGTH) return;
+    clearTimeout(debounceRef.current);
+    runSearch(query); // search immediately, skip the debounce wait
   };
 
   return (
@@ -52,22 +90,21 @@ export default function ChargingView() {
         <input
           value={place}
           onChange={(e) => setPlace(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && search()}
-          placeholder="Search a city, e.g. Pune"
+          onKeyDown={handleKeyDown}
+          placeholder="Type a city, e.g. Pune"
         />
-        <button type="button" onClick={search} disabled={loading || !place.trim()}>
-          {loading && <span className="spinner" aria-hidden="true" />}
-          {loading ? 'Searching…' : 'Search'}
-        </button>
+        {loading && <span className="spinner spinner-dark" aria-hidden="true" />}
       </div>
 
       {error && <div className="error-banner">{error}</div>}
 
       {!searched && !error && (
-        <div className="empty-state">Search a city to see nearby charging stations within ~50 km.</div>
+        <div className="empty-state">
+          Start typing a city (3+ letters) to see nearby charging stations within ~50 km.
+        </div>
       )}
       {searched && !loading && !error && stations.length === 0 && (
-        <div className="empty-state">No charging stations found near "{place}".</div>
+        <div className="empty-state">No charging stations found near "{place.trim()}".</div>
       )}
 
       {(center || stations.length > 0) && (

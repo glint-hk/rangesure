@@ -137,7 +137,7 @@ body {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 16px; /* iOS Safari auto-zooms on focus below 16px */
 }
 .calculate-btn {
   background: var(--accent);
@@ -466,31 +466,22 @@ body {
   max-width: 900px;
 }
 .charging-search {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
+  position: relative;
   margin-bottom: 16px;
 }
 .charging-search input {
-  flex: 1;
-  min-width: 160px;
-  padding: 10px 12px;
+  width: 100%;
+  padding: 10px 36px 10px 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  font-size: 14px;
+  font-size: 16px; /* iOS Safari auto-zooms on focus below 16px */
 }
-.charging-search button {
-  background: var(--accent);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 10px 20px;
-  font-weight: 600;
-  cursor: pointer;
-}
-.charging-search button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
+.charging-search .spinner {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-right: 0;
 }
 .charging-map-pane {
   height: 380px;
@@ -541,7 +532,7 @@ body {
   padding: 8px 10px;
   border: 1px solid var(--border);
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 16px; /* iOS Safari auto-zooms on focus below 16px */
   color: var(--text);
 }
 .settings-actions {
@@ -573,6 +564,7 @@ body {
     width: 100%;
     display: flex;
     overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
     padding: 8px;
   }
   .sidebar-title {
@@ -580,6 +572,14 @@ body {
   }
   .sidebar ul {
     display: flex;
+  }
+  .sidebar-item {
+    padding: 10px 14px;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  .main-content {
+    padding: 14px;
   }
   .driver-body {
     grid-template-columns: 1fr;
@@ -592,5 +592,20 @@ body {
   }
   .card-grid {
     grid-template-columns: 1fr 1fr;
+  }
+  .fleet-header {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .calculate-btn,
+  .preset-btn,
+  .fleet-header button,
+  .settings-actions button {
+    min-height: 44px; /* comfortable touch target */
+  }
+  .assumptions-popover {
+    left: auto;
+    right: 0;
+    width: min(300px, 88vw);
   }
 }
