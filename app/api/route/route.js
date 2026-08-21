@@ -1,23 +1,7 @@
 // Server-only: geocodes origin/destination (restricted to India) then requests a
 // driving-hgv route with elevation from OpenRouteService. Key stays server-side
 // (process.env.ORS_KEY) and is never included in the response.
-async function geocode(key, text) {
-  const url = `https://api.openrouteservice.org/geocode/search?api_key=${key}&text=${encodeURIComponent(
-    text
-  )}&boundary.country=IN&size=1`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    const detail = await res.text();
-    throw { status: res.status, error: `Geocoding failed for "${text}".`, detail };
-  }
-  const data = await res.json();
-  const feature = data.features?.[0];
-  if (!feature) {
-    throw { status: 404, error: `No location found for "${text}".` };
-  }
-  const [lon, lat] = feature.geometry.coordinates;
-  return { lat, lon, label: feature.properties?.label || text };
-}
+import { geocodePlace } from '@/lib/ors';
 
 export async function POST(req) {
   const key = process.env.ORS_KEY;
@@ -36,7 +20,7 @@ export async function POST(req) {
   }
 
   try {
-    const [start, end] = await Promise.all([geocode(key, origin), geocode(key, destination)]);
+    const [start, end] = await Promise.all([geocodePlace(key, origin), geocodePlace(key, destination)]);
 
     const dirRes = await fetch('https://api.openrouteservice.org/v2/directions/driving-hgv/geojson', {
       method: 'POST',

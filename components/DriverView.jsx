@@ -1,9 +1,11 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { VEHICLE, DEFAULT_TARIFF } from '@/config';
+import { DEFAULT_TARIFF } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments } from '@/lib/segments';
+import { useSettings } from '@/lib/settingsContext';
+import { useTripHistory } from '@/lib/tripHistoryContext';
 import ResultsPanel from './ResultsPanel';
 import GuidancePanel from './GuidancePanel';
 import AssumptionsPopover from './AssumptionsPopover';
@@ -62,11 +64,14 @@ function findNotableClimb(perSeg) {
 }
 
 export default function DriverView() {
+  const { vehicle, tariff: settingsTariff } = useSettings();
+  const { addTrip } = useTripHistory();
+
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
   const [payload, setPayload] = useState(HERO_PRESET.payload);
   const [battery, setBattery] = useState(HERO_PRESET.battery);
-  const [tariff, setTariff] = useState(DEFAULT_TARIFF);
+  const [tariff, setTariff] = useState(settingsTariff);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -77,6 +82,15 @@ export default function DriverView() {
   const [recommendedStop, setRecommendedStop] = useState(null);
   const [weatherWarning, setWeatherWarning] = useState(false);
   const [chargingWarning, setChargingWarning] = useState(false);
+
+  // SettingsProvider loads its saved tariff from localStorage in an effect, which runs
+  // AFTER this component's first render — so the useState above can seed from the stale
+  // pre-load default. Re-sync once settings finish loading, but only before the user has
+  // run anything (don't clobber a manual edit mid-session).
+  useEffect(() => {
+    if (!route) setTariff(settingsTariff);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settingsTariff]);
 
   const recompute = (originVal, destinationVal, routeData, weather, payloadKg, batteryPct, tariffVal) => {
     const segments = buildSegments(routeData.coordinates, routeData.distance_m, routeData.duration_s).map(
@@ -91,7 +105,7 @@ export default function DriverView() {
       payloadKg,
       battery_pct: batteryPct,
       tariff: tariffVal,
-      params: VEHICLE,
+      params: vehicle,
     });
 
     console.log(`[EnergyModel] ${originVal} -> ${destinationVal}: kWh/km = ${r.kWh_per_km.toFixed(3)}`);
@@ -170,6 +184,20 @@ export default function DriverView() {
 
       const r = recompute(tripOrigin, tripDestination, routeData, weather, tripPayload, tripBattery, tripTariff);
       setResult(r);
+      addTrip({
+        origin: tripOrigin,
+        destination: tripDestination,
+        payload: tripPayload,
+        battery: tripBattery,
+        tariff: tripTariff,
+        dist_km: r.dist_km,
+        total_kWh: r.total_kWh,
+        kWh_per_km: r.kWh_per_km,
+        predicted_full_range_km: r.predicted_full_range_km,
+        arrival_soc_pct: r.arrival_soc_pct,
+        cost_per_km: r.cost_per_km,
+        feasible: r.feasible,
+      });
 
       try {
         const chargingRes = await fetch('/api/charging', {

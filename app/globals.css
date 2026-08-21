@@ -452,6 +452,119 @@ body {
   font-size: 12px;
 }
 
+.fleet-header .secondary-btn,
+.settings-actions .secondary-btn {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.charging-view,
+.reports-view,
+.settings-view,
+.trips-view {
+  max-width: 900px;
+}
+.charging-search {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.charging-search input {
+  flex: 1;
+  min-width: 160px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+}
+.charging-search button {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.charging-search button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.charging-map-pane {
+  height: 380px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  margin-bottom: 16px;
+}
+.charger-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 8px;
+}
+.charger-list li {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.settings-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin: -4px 0 16px;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+.settings-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+}
+.settings-field input {
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text);
+}
+.settings-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.settings-actions button {
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.settings-saved {
+  color: var(--ok);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.reports-grid {
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+}
+
 @media (max-width: 900px) {
   .app-shell {
     flex-direction: column;
@@ -473,6 +586,9 @@ body {
   }
   .map-pane {
     height: 320px;
+  }
+  .charging-map-pane {
+    height: 280px;
   }
   .card-grid {
     grid-template-columns: 1fr 1fr;

@@ -1,22 +1,23 @@
 'use client';
 import { useState } from 'react';
-import { VEHICLE, DEFAULT_TARIFF } from '@/config';
-
-const ROWS = [
-  ['Empty vehicle mass', `${VEHICLE.m_empty.toLocaleString()} kg`],
-  ['Rolling resistance (Crr)', VEHICLE.Crr],
-  ['Aerodynamic drag (Cd)', VEHICLE.Cd],
-  ['Frontal area', `${VEHICLE.A} m²`],
-  ['Drivetrain efficiency', `${Math.round(VEHICLE.eta_dt * 100)}%`],
-  ['Regen recovery on descents', `${Math.round(VEHICLE.eta_regen * 100)}%`],
-  ['HVAC/aux load', `${VEHICLE.P_aux.toLocaleString()} W`],
-  ['Battery capacity', `${VEHICLE.battery_kWh} kWh`],
-  ['Reserve buffer before "needs charge"', `${VEHICLE.reserve_pct}%`],
-  ['Default tariff', `₹${DEFAULT_TARIFF}/kWh`],
-];
+import { useSettings } from '@/lib/settingsContext';
 
 export default function AssumptionsPopover() {
+  const { vehicle, tariff } = useSettings();
   const [open, setOpen] = useState(false);
+
+  const rows = [
+    ['Empty vehicle mass', `${vehicle.m_empty.toLocaleString()} kg`],
+    ['Rolling resistance (Crr)', vehicle.Crr],
+    ['Aerodynamic drag (Cd)', vehicle.Cd],
+    ['Frontal area', `${vehicle.A} m²`],
+    ['Drivetrain efficiency', `${Math.round(vehicle.eta_dt * 100)}%`],
+    ['Regen recovery on descents', `${Math.round(vehicle.eta_regen * 100)}%`],
+    ['HVAC/aux load', `${vehicle.P_aux.toLocaleString()} W`],
+    ['Battery capacity', `${vehicle.battery_kWh} kWh`],
+    ['Reserve buffer before "needs charge"', `${vehicle.reserve_pct}%`],
+    ['Default tariff', `₹${tariff}/kWh`],
+  ];
 
   return (
     <div className="assumptions-wrap">
@@ -34,7 +35,7 @@ export default function AssumptionsPopover() {
           <div className="assumptions-title">Vehicle & pricing assumptions</div>
           <table className="assumptions-table">
             <tbody>
-              {ROWS.map(([label, value]) => (
+              {rows.map(([label, value]) => (
                 <tr key={label}>
                   <td>{label}</td>
                   <td>{value}</td>
@@ -46,7 +47,7 @@ export default function AssumptionsPopover() {
             <strong>Why 85–91% confidence:</strong> route distance and elevation come from live
             data, but payload aerodynamics, HVAC load, and battery health above are synthetic
             assumptions, not measured. Connecting live BMS and fleet telematics would narrow
-            this band.
+            this band. Editable on the Settings page.
           </div>
           <button type="button" className="assumptions-close" onClick={() => setOpen(false)}>
             Close

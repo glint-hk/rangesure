@@ -20,28 +20,48 @@ const chargerIcon = new L.Icon({
   iconAnchor: [10, 33],
 });
 
-function FitBounds({ positions }) {
+// Recenters/fits the map whenever the route, charger set, or search center changes —
+// covers Plan Trip (route line), Charging (chargers only, no route), and Charging's
+// zero-results case (center on the searched place with no markers at all).
+function ViewController({ routePositions, chargerPositions, centerFallback }) {
   const map = useMap();
   useEffect(() => {
-    if (positions && positions.length > 1) {
-      map.fitBounds(L.latLngBounds(positions), { padding: [30, 30] });
+    if (routePositions && routePositions.length > 1) {
+      map.fitBounds(L.latLngBounds(routePositions), { padding: [30, 30] });
+    } else if (chargerPositions.length > 1) {
+      map.fitBounds(L.latLngBounds(chargerPositions), { padding: [40, 40] });
+    } else if (chargerPositions.length === 1) {
+      map.setView(chargerPositions[0], 12);
+    } else if (centerFallback) {
+      map.setView(centerFallback, 11);
     }
-  }, [positions, map]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(routePositions), JSON.stringify(chargerPositions), JSON.stringify(centerFallback)]);
   return null;
 }
 
-export default function RouteMap({ positions, distanceKm, chargers = [], recommendedStop }) {
+export default function RouteMap({
+  positions,
+  distanceKm,
+  chargers = [],
+  recommendedStop,
+  center,
+  emptyLabel = 'No trip planned yet',
+}) {
   const hasRoute = positions && positions.length > 1;
-  const center = positions?.[0] || [19.076, 72.8777]; // default: Mumbai
+  const chargerPositions = chargers.map((c) => [c.lat, c.lon]);
+  const initialCenter = center || positions?.[0] || chargerPositions[0] || [22.5, 78.9]; // default: India
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       {hasRoute ? (
         <div className="map-badge">Recommended route · {Math.round(distanceKm)} km</div>
       ) : (
-        <div className="map-badge map-badge-muted">No trip planned yet</div>
+        <div className="map-badge map-badge-muted">
+          {chargers.length > 0 ? `${chargers.length} charger${chargers.length === 1 ? '' : 's'} found` : emptyLabel}
+        </div>
       )}
-      <MapContainer center={center} zoom={7} style={{ height: '100%', width: '100%' }}>
+      <MapContainer center={initialCenter} zoom={hasRoute ? 7 : 5} style={{ height: '100%', width: '100%' }}>
         <TileLayer
           attribution="&copy; OpenStreetMap contributors"
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
@@ -51,17 +71,17 @@ export default function RouteMap({ positions, distanceKm, chargers = [], recomme
             <Polyline positions={positions} color="#2563eb" weight={4} />
             <Marker position={positions[0]} />
             <Marker position={positions[positions.length - 1]} />
-            <FitBounds positions={positions} />
           </>
         )}
         {chargers.map((c) => (
-          <Marker key={c.id} position={[c.lat, c.lon]} icon={chargerIcon}>
+          <Marker key={c.id ?? `${c.lat}-${c.lon}`} position={[c.lat, c.lon]} icon={chargerIcon}>
             <Popup>
               {c.title}
               {recommendedStop && recommendedStop.id === c.id ? ' — recommended stop' : ''}
             </Popup>
           </Marker>
         ))}
+        <ViewController routePositions={positions} chargerPositions={chargerPositions} centerFallback={center} />
       </MapContainer>
     </div>
   );

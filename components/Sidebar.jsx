@@ -2,11 +2,11 @@
 
 const NAV_ITEMS = [
   { key: 'plan', label: 'Plan Trip', enabled: true },
-  { key: 'trips', label: 'Trips', enabled: false },
+  { key: 'trips', label: 'Trips', enabled: true },
   { key: 'fleet', label: 'Fleet', enabled: true },
-  { key: 'charging', label: 'Charging', enabled: false },
-  { key: 'reports', label: 'Reports', enabled: false },
-  { key: 'settings', label: 'Settings', enabled: false },
+  { key: 'charging', label: 'Charging', enabled: true },
+  { key: 'reports', label: 'Reports', enabled: true },
+  { key: 'settings', label: 'Settings', enabled: true },
 ];
 
 export default function Sidebar({ active, onSelect }) {

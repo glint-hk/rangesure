@@ -16,34 +16,54 @@ See the CALIBRATION comment in `config.js` and `DriverView.jsx` for the current 
 - Map: react-leaflet + OpenStreetMap tiles. Leaflet touches `window`, so RouteMap.jsx
   MUST be dynamically imported with { ssr: false } and only rendered on the client.
 - ALL external APIs are called from server route handlers in app/api/* — never from the browser:
-  - OpenRouteService (routing/elevation/geocoding, profile `driving-hgv`) -> app/api/route
+  - OpenRouteService (routing/elevation, profile `driving-hgv`)          -> app/api/route
+  - OpenRouteService (single-place geocoding, shared via lib/ors.js)     -> app/api/geocode
   - Open-Meteo (weather, keyless)                                        -> app/api/weather
   - Open Charge Map (chargers)                                           -> app/api/charging
   - Google Gemini (LLM driver guidance, model `gemini-2.5-flash`)        -> app/api/guidance
 - Env vars are SERVER-ONLY (no NEXT_PUBLIC_ prefix): ORS_KEY, OCM_KEY, GEMINI_API_KEY.
 - The energy model (lib/energyModel.js) is PURE (no fetch) and runs client-side.
+- Two client-side Context providers, wrapping the whole app in app/page.js, both
+  localStorage-backed (per-browser only, no backend):
+  - `lib/settingsContext.jsx` — vehicle params + default tariff, editable on Settings,
+    consumed live by Plan Trip, Fleet, and AssumptionsPopover instead of the static
+    config.js import. config.js remains the factory-default source (and Settings'
+    "Reset to defaults" target).
+  - `lib/tripHistoryContext.jsx` — log of trips run on Plan Trip (capped at 50), feeds
+    the Trips and Reports pages. Fleet runs are NOT logged here (Fleet is its own
+    snapshot view, not a dispatch log).
 
 ## The app
-Left sidebar nav: Plan Trip, Trips, Fleet, Charging, Reports, Settings. Only Plan Trip and
-Fleet are functional — the rest are visible, disabled placeholders (matches the board deck
-mockup; do not wire them up without an explicit ask).
+Left sidebar nav, all six items functional: Plan Trip, Trips, Fleet, Charging, Reports,
+Settings.
 
 1. **Plan Trip (Driver view)** — one trip. Inputs: origin, destination, payload (kg),
-   battery %, tariff (₹/kWh, default 8.5). Two one-click presets: "Mumbai → Pune" (the
-   board's reference trip — payload 4000 kg, battery 100%, tariff 8.5; battery is 100%,
-   not the deck's original 80%, because the real live route only leaves ~12% margin at
-   full charge — see the recalibration note above) and "Nashik run
-   (needs charge)" (a longer, lower-battery trip meant to trigger a charging stop in the
-   demo). Both presets fill the fields AND run the trip immediately. "Optimise Trip" runs
-   a manually-entered trip. Output: route on map with a "Recommended route · N km" badge,
-   six result cards in this exact order/wording — Trip distance (km) · Energy use (kWh/km)
-   · Predicted full range (km) · Energy cost (₹/km) · Arrival battery (%) · Charging need
-   ("No stop" or "Stop at <charger>") — then a "YOUR TRIP PLAN" panel: 2-4 LLM guidance
-   bullets, a "Confidence: 85–91%" line, and the limitations note "Prototype uses assumed
-   vehicle parameters; live BMS calibration required before deployment." Never show
-   "±12%" — confidence is always the 85–91% range.
-2. **Fleet view** — a table of several trucks/trips using the same model, plus aggregate
-   cost-per-km and total energy. Sortable.
+   battery %, tariff (₹/kWh, default from Settings). Two one-click presets: "Mumbai → Pune"
+   (the board's reference trip — payload 4000 kg, battery 100%, tariff 8.5, all fixed
+   regardless of Settings changes; battery is 100%, not the deck's original 80%, because
+   the real live route only leaves ~12% margin at full charge — see the recalibration note
+   above) and "Nashik run (needs charge)" (a longer, lower-battery trip meant to trigger a
+   charging stop in the demo). Both presets fill the fields AND run the trip immediately.
+   "Optimise Trip" runs a manually-entered trip. Output: route on map with a "Recommended
+   route · N km" badge, six result cards in this exact order/wording — Trip distance (km)
+   · Energy use (kWh/km) · Predicted full range (km) · Energy cost (₹/km) · Arrival
+   battery (%) · Charging need ("No stop" or "Stop at <charger>") — then a "YOUR TRIP PLAN"
+   panel: 2-4 LLM guidance bullets, a "Confidence: 85–91%" line, and an Assumptions popover
+   (triggered by the limitations-note text) listing live vehicle params. Never show
+   "±12%" — confidence is always the 85–91% range. Every successful calculation is logged
+   to trip history via `useTripHistory().addTrip()`.
+2. **Trips** — table of trip history (most recent first), "Clear history" button, empty
+   state if none logged yet.
+3. **Fleet view** — a table of several trucks/trips using the same model + live Settings
+   params, plus aggregate cost-per-km and total energy. Sortable.
+4. **Charging** — search a city (geocoded via app/api/geocode), shows nearby charging
+   stations (~50 km) on a map plus a list. Reuses RouteMap.jsx in its chargers-only mode
+   (no route line).
+5. **Reports** — aggregate stats (total distance/energy/cost, feasibility rate) computed
+   from trip history. Empty state if none logged yet.
+6. **Settings** — edit every VEHICLE param and the default tariff; changes apply
+   immediately to Plan Trip and Fleet and persist to localStorage. "Reset to defaults"
+   restores the config.js values.
 
 ## The energy model (lib/energyModel.js)
 Formulas: F_roll=Crr·m·g, F_aero=0.5·ρ·Cd·A·v_air², F_grade=m·g·sinθ (clamped ±0.3), drivetrain

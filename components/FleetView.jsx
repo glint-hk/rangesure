@@ -1,8 +1,9 @@
 'use client';
 import { useState } from 'react';
-import { VEHICLE, DEFAULT_TARIFF } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments } from '@/lib/segments';
+import { useSettings } from '@/lib/settingsContext';
+import { fmtNum, fmtRound } from '@/lib/format';
 
 const FLEET_PRESET = [
   { truck: 'Truck 01', origin: 'Mumbai', destination: 'Pune', payload: 4000, battery: 80 },
@@ -14,6 +15,7 @@ const FLEET_PRESET = [
 ];
 
 export default function FleetView() {
+  const { vehicle, tariff } = useSettings();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [sortKey, setSortKey] = useState('truck');
@@ -37,8 +39,8 @@ export default function FleetView() {
           segments,
           payloadKg: trip.payload,
           battery_pct: trip.battery,
-          tariff: DEFAULT_TARIFF,
-          params: VEHICLE,
+          tariff,
+          params: vehicle,
         });
         results.push({ ...trip, ...r, error: null });
       } catch (err) {
@@ -106,11 +108,11 @@ export default function FleetView() {
       {rows.length > 0 && (
         <div className="fleet-dashboard-strip">
           <div>
-            <span className="stat-value">{totalEnergy.toFixed(1)}</span>
+            <span className="stat-value">{fmtNum(totalEnergy, 1)}</span>
             <span className="stat-label">kWh total</span>
           </div>
           <div>
-            <span className="stat-value">₹{avgCostPerKm.toFixed(2)}</span>
+            <span className="stat-value">₹{fmtNum(avgCostPerKm, 2)}</span>
             <span className="stat-label">avg ₹/km</span>
           </div>
           <div>
@@ -148,11 +150,11 @@ export default function FleetView() {
                   </td>
                 ) : (
                   <>
-                    <td>{r.dist_km.toFixed(0)}</td>
-                    <td>{r.kWh_per_km.toFixed(2)}</td>
-                    <td>₹{r.cost_per_km.toFixed(2)}</td>
-                    <td>{Math.round(r.predicted_full_range_km)}</td>
-                    <td>{Math.round(r.arrival_soc_pct)}%</td>
+                    <td>{fmtNum(r.dist_km, 0)}</td>
+                    <td>{fmtNum(r.kWh_per_km, 2)}</td>
+                    <td>₹{fmtNum(r.cost_per_km, 2)}</td>
+                    <td>{fmtRound(r.predicted_full_range_km)}</td>
+                    <td>{fmtRound(r.arrival_soc_pct)}%</td>
                     <td>
                       <span className={`badge ${r.feasible ? 'ok' : 'warn'}`}>
                         {r.feasible ? 'Feasible' : 'Needs charge'}
