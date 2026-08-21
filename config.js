@@ -2,8 +2,10 @@
 // shown to the user in the Assumptions/limitations note — not hidden.
 //
 // CALIBRATION: Cd, Crr, P_aux and eta_regen are the knobs to nudge if the live Mumbai->Pune
-// reference trip (see HERO_PRESET in DriverView.jsx) drifts from the board's target of
-// ~0.82 kWh/km. Nudge one at a time and re-check the console.log output.
+// reference trip (see HERO_PRESET in DriverView.jsx) drifts from ~1.06 kWh/km — the real
+// live baseline for ORS's driving-hgv route (165 km via the old ghat road), recalibrated
+// from the deck's original 148 km / 0.82 kWh/km expressway assumption. Nudge one at a
+// time and re-check the console.log output.
 export const VEHICLE = {
   m_empty: 8000, // kg (medium e-truck, empty). Loaded mass = m_empty + payloadKg.
   Crr: 0.007, // CALIBRATION: rolling resistance coefficient

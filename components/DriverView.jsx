@@ -9,13 +9,15 @@ import GuidancePanel from './GuidancePanel';
 
 const RouteMap = dynamic(() => import('./RouteMap'), { ssr: false });
 
-// The reference trip shown to the board (slide 9).
+// The reference trip shown to the board (slide 9). Starts at 100% battery — the real
+// ORS driving-hgv route (165 km via the old ghat road, not the 148 km expressway
+// assumption) arrives with only ~12% at a full charge, so 80% would need a stop too.
 const HERO_PRESET = {
   label: 'Mumbai → Pune',
   origin: 'Mumbai',
   destination: 'Pune',
   payload: 4000,
-  battery: 80,
+  battery: 100,
   tariff: DEFAULT_TARIFF,
 };
 
@@ -29,12 +31,14 @@ const NASHIK_PRESET = {
   tariff: DEFAULT_TARIFF,
 };
 
-// Board target for the hero preset: ~0.82 kWh/km (244 km full range, 19% arrival,
-// ₹6.97/km). If the live computed value drifts more than ~0.03 kWh/km from this,
-// tune Cd/Crr/P_aux/eta_regen in config.js — the model still computes live from
-// the real route, this just nudges the physics constants to match reality.
-const CALIBRATION_TARGET_KWH_PER_KM = 0.82;
-const CALIBRATION_TOLERANCE = 0.03;
+// Recalibrated from the deck's original 0.82 kWh/km target after live verification:
+// ORS's driving-hgv profile (the only profile this project's ORS key can access) routes
+// Mumbai->Pune via the old ghat road, not the expressway the deck assumed — 165 km with
+// ~2,000 m of real climbing, vs. the deck's 148 km. ~1.06 kWh/km is the honest live
+// baseline for THIS route; Cd/Crr/P_aux/eta_regen in config.js are still there to tune if
+// the live number drifts from that going forward (e.g. after an ORS/OSM data change).
+const CALIBRATION_TARGET_KWH_PER_KM = 1.06;
+const CALIBRATION_TOLERANCE = 0.05;
 
 // Picks the steepest segment above a "notable" grade threshold, for the guidance
 // layer to reference. Returns null if nothing on the route is steep enough to call out.

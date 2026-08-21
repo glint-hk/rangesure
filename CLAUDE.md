@@ -5,6 +5,12 @@ live deployment, and usability by a NON-technical person. The authoritative spec
 `../DTAI_RangeSure_Build_Prompts.md` (repo root's parent) — the board deck has committed to
 specific numbers there; the app must reproduce them on the reference trip.
 
+**Recalibration note:** live verification found the deck's original Mumbai→Pune numbers (148 km,
+0.82 kWh/km, expressway) don't match reality — ORS's `driving-hgv` profile routes via the old
+ghat road (165 km, ~2,000 m of climbing), giving ~1.06 kWh/km. The app was NOT tuned to fake the
+deck's numbers; the deck should be updated to the real ones instead (slide 9 update pending).
+See the CALIBRATION comment in `config.js` and `DriverView.jsx` for the current live baseline.
+
 ## Stack
 - Next.js App Router, JavaScript (NOT TypeScript). Plain CSS. Deployed on Vercel.
 - Map: react-leaflet + OpenStreetMap tiles. Leaflet touches `window`, so RouteMap.jsx
@@ -24,7 +30,9 @@ mockup; do not wire them up without an explicit ask).
 
 1. **Plan Trip (Driver view)** — one trip. Inputs: origin, destination, payload (kg),
    battery %, tariff (₹/kWh, default 8.5). Two one-click presets: "Mumbai → Pune" (the
-   board's reference trip — payload 4000 kg, battery 80%, tariff 8.5) and "Nashik run
+   board's reference trip — payload 4000 kg, battery 100%, tariff 8.5; battery is 100%,
+   not the deck's original 80%, because the real live route only leaves ~12% margin at
+   full charge — see the recalibration note above) and "Nashik run
    (needs charge)" (a longer, lower-battery trip meant to trigger a charging stop in the
    demo). Both presets fill the fields AND run the trip immediately. "Optimise Trip" runs
    a manually-entered trip. Output: route on map with a "Recommended route · N km" badge,
@@ -45,11 +53,12 @@ arrival_soc_pct (= (battery_kWh·battery_pct/100 − total_kWh) / battery_kWh ×
 is `arrival_soc_pct >= VEHICLE.reserve_pct` (10% reserve buffer, not a bare 0%). Keep the model
 pure (no fetch) and keep each physics line commented with the formula it implements.
 
-**Calibration:** the Mumbai→Pune preset is the board's reference trip and should read
-~0.82 kWh/km live from the real route (→ 244 km full range, 19% arrival, ₹6.97/km). DriverView
-console.logs the computed kWh/km on every calculation and flags drift >0.03 for this preset.
-Cd, Crr, P_aux, and eta_regen in config.js are marked as the tuning knobs — nudge those, never
-hardcode the output numbers themselves.
+**Calibration:** the Mumbai→Pune preset is the board's reference trip and reads ~1.06 kWh/km
+live from the real route at 100% battery (→ 188 km full range, ~12% arrival, ₹9.04/km — see the
+recalibration note above for why this differs from the deck's original 0.82/244/19%/₹6.97).
+DriverView console.logs the computed kWh/km on every calculation and flags drift >0.05 from that
+baseline for this preset. Cd, Crr, P_aux, and eta_regen in config.js are marked as the tuning
+knobs — nudge those, never hardcode the output numbers themselves.
 
 ## Guidance layer (app/api/guidance)
 The LLM (Gemini) may ONLY explain numbers the physics model already produced (range, kWh/km,
