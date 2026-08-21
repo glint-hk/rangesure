@@ -36,8 +36,10 @@ export default function RouteMap({ positions, distanceKm, chargers = [], recomme
 
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
-      {hasRoute && (
+      {hasRoute ? (
         <div className="map-badge">Recommended route · {Math.round(distanceKm)} km</div>
+      ) : (
+        <div className="map-badge map-badge-muted">No trip planned yet</div>
       )}
       <MapContainer center={center} zoom={7} style={{ height: '100%', width: '100%' }}>
         <TileLayer

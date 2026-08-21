@@ -67,6 +67,7 @@ export default function FleetView() {
   });
 
   const validRows = rows.filter((r) => !r.error);
+  const errorCount = rows.length - validRows.length;
   const needsChargeCount = validRows.filter((r) => !r.feasible).length;
   const totalEnergy = validRows.reduce((a, r) => a + (r.total_kWh || 0), 0);
   const avgCostPerKm = validRows.length
@@ -78,9 +79,29 @@ export default function FleetView() {
       <div className="fleet-header">
         <h2>Fleet dashboard</h2>
         <button type="button" onClick={runFleet} disabled={loading}>
+          {loading && <span className="spinner" aria-hidden="true" />}
           {loading ? 'Running fleet…' : 'Run fleet'}
         </button>
       </div>
+
+      {rows.length === 0 && !loading && (
+        <div className="empty-state">
+          Click "Run fleet" to compute range and cost for 6 sample trucks using the same physics
+          model as Plan Trip.
+        </div>
+      )}
+      {loading && rows.length === 0 && (
+        <div className="empty-state">
+          <span className="spinner spinner-dark" aria-hidden="true" />
+          Running each truck's route through the model…
+        </div>
+      )}
+
+      {errorCount > 0 && (
+        <div className="error-banner">
+          {errorCount} of {rows.length} trucks failed to load — see the row for details.
+        </div>
+      )}
 
       {rows.length > 0 && (
         <div className="fleet-dashboard-strip">
@@ -100,6 +121,7 @@ export default function FleetView() {
       )}
 
       {rows.length > 0 && (
+        <div className="table-scroll">
         <table className="fleet-table">
           <thead>
             <tr>
@@ -142,6 +164,7 @@ export default function FleetView() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   );

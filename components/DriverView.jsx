@@ -6,6 +6,7 @@ import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments } from '@/lib/segments';
 import ResultsPanel from './ResultsPanel';
 import GuidancePanel from './GuidancePanel';
+import AssumptionsPopover from './AssumptionsPopover';
 
 const RouteMap = dynamic(() => import('./RouteMap'), { ssr: false });
 
@@ -74,6 +75,8 @@ export default function DriverView() {
   const [chargers, setChargers] = useState([]);
   const [result, setResult] = useState(null);
   const [recommendedStop, setRecommendedStop] = useState(null);
+  const [weatherWarning, setWeatherWarning] = useState(false);
+  const [chargingWarning, setChargingWarning] = useState(false);
 
   const recompute = (originVal, destinationVal, routeData, weather, payloadKg, batteryPct, tariffVal) => {
     const segments = buildSegments(routeData.coordinates, routeData.distance_m, routeData.duration_s).map(
@@ -131,6 +134,8 @@ export default function DriverView() {
     setWeatherData(null);
     setChargers([]);
     setRecommendedStop(null);
+    setWeatherWarning(false);
+    setChargingWarning(false);
 
     try {
       const routeRes = await fetch('/api/route', {
@@ -153,9 +158,13 @@ export default function DriverView() {
           body: JSON.stringify({ lat: midLat, lon: midLon }),
         });
         weather = await weatherRes.json();
-        if (!weatherRes.ok) weather = null;
+        if (!weatherRes.ok) {
+          weather = null;
+          setWeatherWarning(true);
+        }
       } catch {
         weather = null;
+        setWeatherWarning(true);
       }
       setWeatherData(weather);
 
@@ -169,11 +178,13 @@ export default function DriverView() {
           body: JSON.stringify({ lat: midLat, lon: midLon, distance_km: r.dist_km }),
         });
         const chargingData = await chargingRes.json();
+        if (!chargingRes.ok) throw new Error('charging lookup failed');
         const stations = chargingData.stations || [];
         setChargers(stations);
         setRecommendedStop(!r.feasible && stations.length > 0 ? stations[0] : null);
       } catch {
         setChargers([]);
+        setChargingWarning(true);
       }
     } catch (err) {
       setError(err.message || 'Something went wrong. Please try again.');
@@ -263,9 +274,16 @@ export default function DriverView() {
           onClick={() => handleCalculate()}
           disabled={loading || !origin || !destination}
         >
+          {loading && <span className="spinner" aria-hidden="true" />}
           {loading ? 'Optimising…' : 'Optimise Trip'}
         </button>
         {error && <div className="error-banner">{error}</div>}
+        {weatherWarning && (
+          <div className="warning-note">Live weather unavailable — using default conditions.</div>
+        )}
+        {chargingWarning && (
+          <div className="warning-note">Couldn't fetch nearby chargers — charger markers may be incomplete.</div>
+        )}
       </div>
 
       <div className="driver-body">
@@ -278,6 +296,18 @@ export default function DriverView() {
           />
         </div>
         <div className="side-pane">
+          {!result && !loading && (
+            <div className="empty-state">
+              Pick a preset above, or enter a trip and hit "Optimise Trip" to see the route,
+              energy use, and driver guidance.
+            </div>
+          )}
+          {loading && !result && (
+            <div className="empty-state">
+              <span className="spinner spinner-dark" aria-hidden="true" />
+              Calculating route and energy use…
+            </div>
+          )}
           <ResultsPanel result={result} chargingNeed={chargingNeed} />
           {result && (
             <div className="trip-plan-panel">
@@ -286,9 +316,7 @@ export default function DriverView() {
               <div className="confidence-line">
                 Confidence: {result.confidence_low}–{result.confidence_high}%
               </div>
-              <div className="limitations-note">
-                Prototype uses assumed vehicle parameters; live BMS calibration required before deployment.
-              </div>
+              <AssumptionsPopover />
             </div>
           )}
         </div>
