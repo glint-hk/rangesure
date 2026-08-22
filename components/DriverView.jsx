@@ -5,6 +5,7 @@ import { SlidersHorizontal, Loader2, AlertCircle, Info } from 'lucide-react';
 import { DEFAULT_TARIFF, VEHICLES } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments, findSteepestClimb } from '@/lib/segments';
+import { assessConfidence, STANDIN_WORST_CASE_PENALTY } from '@/lib/governance';
 import { useSettings } from '@/lib/settingsContext';
 import { useTripHistory } from '@/lib/tripHistoryContext';
 import { Button } from '@/components/ui/button';
@@ -84,6 +85,7 @@ export default function DriverView() {
   const [recommendedStop, setRecommendedStop] = useState(null);
   const [weatherWarning, setWeatherWarning] = useState(false);
   const [chargingWarning, setChargingWarning] = useState(false);
+  const [elevationMissing, setElevationMissing] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);
 
   // SettingsProvider loads its saved tariff from localStorage in an effect, which runs
@@ -150,6 +152,7 @@ export default function DriverView() {
     setRecommendedStop(null);
     setWeatherWarning(false);
     setChargingWarning(false);
+    setElevationMissing(false);
     setSheetOpen(false);
 
     try {
@@ -161,6 +164,7 @@ export default function DriverView() {
       const routeData = await routeRes.json();
       if (!routeRes.ok) throw new Error(routeData.error || 'Route lookup failed.');
       setRoute(routeData);
+      setElevationMissing(routeData.coordinates.some((c) => c[2] == null));
 
       const midIdx = Math.floor(routeData.coordinates.length / 2);
       const [midLon, midLat] = routeData.coordinates[midIdx];
@@ -301,6 +305,42 @@ export default function DriverView() {
     [route]
   );
 
+  // Stand-in worst case until P1-2 wires in a real best/expected/worst scenario run —
+  // a flat pessimistic penalty on consumption, checked against the reserve buffer.
+  const worstCaseArrivalPct = useMemo(() => {
+    if (!result) return null;
+    return result.arrival_soc_pct - ((result.total_kWh * STANDIN_WORST_CASE_PENALTY) / vehicle.battery_kWh) * 100;
+  }, [result, vehicle.battery_kWh]);
+
+  const governance = useMemo(() => {
+    if (!result) return null;
+    return assessConfidence({
+      weatherFailed: weatherWarning,
+      chargingFailed: chargingWarning,
+      elevationMissing,
+      arrival_soc_pct: result.arrival_soc_pct,
+      reserve_pct: vehicle.reserve_pct,
+      worstCaseArrivalPct,
+    });
+  }, [result, weatherWarning, chargingWarning, elevationMissing, vehicle.reserve_pct, worstCaseArrivalPct]);
+
+  const isFallback = governance ? governance.degraded || governance.uncertain : false;
+
+  // Stand-in trip log: every calculation logs its inputs, model version, confidence,
+  // and whether the governance red-line kicked in — the demo highlight for P0-4.
+  useEffect(() => {
+    if (!result || !governance) return;
+    console.log('[Governance]', {
+      inputs: { origin, destination, payload, battery, tariff, vehicle: vehicle.name },
+      model_version: 'physics-v1',
+      confidence: `${result.confidence_low}-${result.confidence_high}%`,
+      verdict: !result.feasible ? 'needs-charge' : isFallback ? 'uncertain' : 'feasible',
+      fallback_active: isFallback,
+      reasons: governance.reasons,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result, governance]);
+
   const chargingNeed = result
     ? result.feasible
       ? 'No stop'
@@ -310,17 +350,27 @@ export default function DriverView() {
     : '—';
 
   const verdictProps = result
-    ? {
-        status: result.feasible ? 'ok' : 'warn',
-        headline: result.feasible
-          ? `You'll make it — arrive ${Math.round(result.arrival_soc_pct)}%`
-          : recommendedStop
-          ? `Charge once at ${recommendedStop.title}`
-          : 'Charging stop needed en route',
-        subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km`,
-        confidenceLow: result.confidence_low,
-        confidenceHigh: result.confidence_high,
-      }
+    ? isFallback
+      ? {
+          status: 'uncertain',
+          headline: 'Low confidence — manual planning advised',
+          subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km — numbers below still apply, with a wider margin of error`,
+          confidenceLow: Math.max(0, result.confidence_low - 15),
+          confidenceHigh: Math.min(100, result.confidence_high + 5),
+          reasons: governance.reasons,
+          fallbackActive: true,
+        }
+      : {
+          status: result.feasible ? 'ok' : 'warn',
+          headline: result.feasible
+            ? `You'll make it — arrive ${Math.round(result.arrival_soc_pct)}%`
+            : recommendedStop
+            ? `Charge once at ${recommendedStop.title}`
+            : 'Charging stop needed en route',
+          subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km`,
+          confidenceLow: result.confidence_low,
+          confidenceHigh: result.confidence_high,
+        }
     : null;
 
   const inputsForm = (
@@ -438,6 +488,11 @@ export default function DriverView() {
       {chargingWarning && (
         <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
           Couldn't fetch nearby chargers — charger markers may be incomplete.
+        </div>
+      )}
+      {elevationMissing && (
+        <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+          Elevation data missing for part of the route — climbs may be under-counted.
         </div>
       )}
     </div>
