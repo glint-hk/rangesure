@@ -4,7 +4,7 @@ import dynamic from 'next/dynamic';
 import { SlidersHorizontal, Loader2, AlertCircle, Info } from 'lucide-react';
 import { DEFAULT_TARIFF, VEHICLES } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
-import { buildSegments } from '@/lib/segments';
+import { buildSegments, findSteepestClimb } from '@/lib/segments';
 import { useSettings } from '@/lib/settingsContext';
 import { useTripHistory } from '@/lib/tripHistoryContext';
 import { Button } from '@/components/ui/button';
@@ -51,24 +51,16 @@ const NASHIK_PRESET = {
 const CALIBRATION_TARGET_KWH_PER_KM = 1.06;
 const CALIBRATION_TOLERANCE = 0.05;
 
-// Picks the steepest segment above a "notable" grade threshold, for the guidance
-// layer to reference. Returns null if nothing on the route is steep enough to call out.
-const NOTABLE_GRADE_PCT = 2;
-function findNotableClimb(perSeg) {
-  if (!perSeg || !perSeg.length) return null;
-  let cumulative_m = 0;
-  let best = null;
-  for (const seg of perSeg) {
-    if (seg.grade_pct > NOTABLE_GRADE_PCT && (!best || seg.grade_pct > best.grade_pct)) {
-      best = { grade_pct: seg.grade_pct, at_km: cumulative_m / 1000 };
-    }
-    cumulative_m += seg.distance_m;
-  }
-  if (!best) return null;
-  return {
-    name: `Climb near km ${Math.round(best.at_km)}`,
-    grade: `${best.grade_pct.toFixed(1)}%`,
-  };
+// Weather is sampled at these fractions of route distance (start, ~1/3, ~2/3, end)
+// instead of one midpoint, so temp/headwind vary segment-to-segment on long routes.
+const WEATHER_SAMPLE_FRACTIONS = [0, 1 / 3, 2 / 3, 1];
+
+// Derives a safe eco-speed for the steepest climb — scaled down from the route's
+// average speed by how severe the grade is, floored so it never suggests crawling.
+function climbSafeSpeedKmh(routeAvgKmh, gradePct) {
+  if (!routeAvgKmh) return null;
+  const reductionPct = Math.max(10, Math.min(45, gradePct * 4));
+  return Math.max(30, Math.round(routeAvgKmh * (1 - reductionPct / 100)));
 }
 
 export default function DriverView() {
@@ -84,7 +76,9 @@ export default function DriverView() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [route, setRoute] = useState(null);
-  const [weatherData, setWeatherData] = useState(null);
+  const [weatherSamples, setWeatherSamples] = useState([]); // [{ at_km, temp_factor, headwind_ms }]
+  const [primaryWeather, setPrimaryWeather] = useState(null); // one sample, for the guidance summary
+  const [climbInfo, setClimbInfo] = useState({ notable_climb: null, recommended_speed_kmh: null });
   const [chargers, setChargers] = useState([]);
   const [result, setResult] = useState(null);
   const [recommendedStop, setRecommendedStop] = useState(null);
@@ -101,14 +95,11 @@ export default function DriverView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsTariff]);
 
-  const recompute = (originVal, destinationVal, routeData, weather, payloadKg, batteryPct, tariffVal) => {
-    const segments = buildSegments(routeData.coordinates, routeData.distance_m, routeData.duration_s).map(
-      (s) => ({
-        ...s,
-        temp_factor: weather?.temp_factor || 1,
-        headwind_ms: weather?.wind_ms || 0,
-      })
-    );
+  // Climb detection and its recommended speed are purely route geometry — independent
+  // of payload/battery/tariff/vehicle — so they're computed once per route fetch (see
+  // handleCalculate) and just attached here on every recompute, not re-derived.
+  const recompute = (originVal, destinationVal, routeData, samples, payloadKg, batteryPct, tariffVal, climb) => {
+    const segments = buildSegments(routeData.coordinates, routeData.distance_m, routeData.duration_s, samples);
     const r = estimateTrip({
       segments,
       payloadKg,
@@ -135,9 +126,7 @@ export default function DriverView() {
 
     return {
       ...r,
-      notable_climb: findNotableClimb(r.perSeg),
-      recommended_speed_kmh:
-        routeData.duration_s > 0 ? Math.round((routeData.distance_m / routeData.duration_s) * 3.6) : null,
+      ...climb,
     };
   };
 
@@ -154,7 +143,9 @@ export default function DriverView() {
     setError(null);
     setResult(null);
     setRoute(null);
-    setWeatherData(null);
+    setWeatherSamples([]);
+    setPrimaryWeather(null);
+    setClimbInfo({ notable_climb: null, recommended_speed_kmh: null });
     setChargers([]);
     setRecommendedStop(null);
     setWeatherWarning(false);
@@ -174,25 +165,74 @@ export default function DriverView() {
       const midIdx = Math.floor(routeData.coordinates.length / 2);
       const [midLon, midLat] = routeData.coordinates[midIdx];
 
-      let weather = null;
-      try {
-        const weatherRes = await fetch('/api/weather', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat: midLat, lon: midLon }),
-        });
-        weather = await weatherRes.json();
-        if (!weatherRes.ok) {
-          weather = null;
-          setWeatherWarning(true);
-        }
-      } catch {
-        weather = null;
-        setWeatherWarning(true);
-      }
-      setWeatherData(weather);
+      // Climb detection is pure route geometry — independent of weather/vehicle — so
+      // it runs once here, before any weather fetch, off a throwaway segment build.
+      const routeAvgKmh =
+        routeData.duration_s > 0 ? (routeData.distance_m / routeData.duration_s) * 3.6 : null;
+      const baseSegments = buildSegments(routeData.coordinates, routeData.distance_m, routeData.duration_s);
+      const climb = findSteepestClimb(baseSegments);
 
-      const r = recompute(tripOrigin, tripDestination, routeData, weather, tripPayload, tripBattery, tripTariff);
+      let climbResult = {
+        notable_climb: null,
+        recommended_speed_kmh: routeAvgKmh ? Math.round(routeAvgKmh) : null,
+      };
+      if (climb) {
+        let placeName = `Climb near km ${Math.round(climb.start_km)}`;
+        try {
+          const revRes = await fetch('/api/reverse-geocode', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: climb.lat, lon: climb.lon }),
+          });
+          const revData = await revRes.json();
+          if (revRes.ok && revData.label) placeName = revData.label;
+        } catch {
+          // Reverse geocoding failed — fall back to the km-marker name, still real data.
+        }
+        climbResult = {
+          notable_climb: { name: placeName, grade: `${climb.grade_pct.toFixed(1)}%` },
+          recommended_speed_kmh: climbSafeSpeedKmh(routeAvgKmh, climb.grade_pct),
+        };
+      }
+      setClimbInfo(climbResult);
+
+      // Sample weather at start/~1/3/~2/3/end instead of one midpoint, so temp and
+      // headwind vary segment-to-segment on long routes. Each point is guarded
+      // independently — one failed sample doesn't null out the others.
+      const totalKm = routeData.distance_m / 1000;
+      const weatherPoints = WEATHER_SAMPLE_FRACTIONS.map((f) => {
+        const idx = Math.min(routeData.coordinates.length - 1, Math.round(f * (routeData.coordinates.length - 1)));
+        const [lon, lat] = routeData.coordinates[idx];
+        return { at_km: totalKm * f, lat, lon };
+      });
+
+      const weatherResults = await Promise.allSettled(
+        weatherPoints.map(async (pt) => {
+          const res = await fetch('/api/weather', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ lat: pt.lat, lon: pt.lon }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Weather lookup failed.');
+          return { at_km: pt.at_km, temp_factor: data.temp_factor, headwind_ms: data.wind_ms, ...data };
+        })
+      );
+      const samples = weatherResults.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+      if (samples.length < weatherResults.length) setWeatherWarning(true);
+      setWeatherSamples(samples);
+      setPrimaryWeather(samples[Math.floor(samples.length / 2)] || null);
+
+      const r = recompute(
+        tripOrigin,
+        tripDestination,
+        routeData,
+        samples,
+        tripPayload,
+        tripBattery,
+        tripTariff,
+        climbResult
+      );
       setResult(r);
       addTrip({
         origin: tripOrigin,
@@ -247,10 +287,10 @@ export default function DriverView() {
   };
 
   // Recompute live on slider/vehicle changes — no refetch, reuses the already-fetched
-  // route + weather.
+  // route + weather samples + climb info.
   useEffect(() => {
     if (!route) return;
-    const r = recompute(origin, destination, route, weatherData, payload, battery, tariff);
+    const r = recompute(origin, destination, route, weatherSamples, payload, battery, tariff, climbInfo);
     setResult(r);
     setRecommendedStop(!r.feasible && chargers.length > 0 ? chargers[0] : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -460,7 +500,7 @@ export default function DriverView() {
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Your trip plan
               </h3>
-              <GuidancePanel result={result} chargingNeed={chargingNeed} weather={weatherData} />
+              <GuidancePanel result={result} chargingNeed={chargingNeed} weather={primaryWeather} />
               <AssumptionsPopover />
             </Card>
           )}
