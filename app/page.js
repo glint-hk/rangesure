@@ -16,9 +16,9 @@ export default function Page() {
   return (
     <SettingsProvider>
       <TripHistoryProvider>
-        <div className="app-shell">
+        <div className="flex min-h-screen bg-background">
           <Sidebar active={active} onSelect={setActive} />
-          <main className="main-content">
+          <main className="min-w-0 flex-1 overflow-x-hidden px-4 pb-24 pt-5 sm:px-6 sm:pt-6 lg:pb-6">
             {active === 'plan' && <DriverView />}
             {active === 'trips' && <TripsView />}
             {active === 'fleet' && <FleetView />}

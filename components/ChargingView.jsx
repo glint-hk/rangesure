@@ -1,6 +1,8 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { Loader2 } from 'lucide-react';
+import { Card } from '@/components/ui/card';
 
 const RouteMap = dynamic(() => import('./RouteMap'), { ssr: false });
 
@@ -84,31 +86,43 @@ export default function ChargingView() {
   };
 
   return (
-    <div className="charging-view">
-      <h2>Charging network</h2>
-      <div className="charging-search">
+    <div className="mx-auto max-w-5xl">
+      <h2 className="mb-4 text-lg font-bold text-foreground">Charging network</h2>
+      <div className="relative mb-4">
         <input
+          className="h-11 w-full rounded-xl border border-border bg-surface-raised px-3.5 pr-10 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
           value={place}
           onChange={(e) => setPlace(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder="Type a city, e.g. Pune"
         />
-        {loading && <span className="spinner spinner-dark" aria-hidden="true" />}
+        {loading && (
+          <Loader2
+            className="absolute right-3.5 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-primary"
+            aria-hidden="true"
+          />
+        )}
       </div>
 
-      {error && <div className="error-banner">{error}</div>}
-
-      {!searched && !error && (
-        <div className="empty-state">
-          Start typing a city (3+ letters) to see nearby charging stations within ~50 km.
+      {error && (
+        <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {error}
         </div>
       )}
+
+      {!searched && !error && (
+        <Card className="mb-4 border-dashed p-5 text-sm text-muted-foreground">
+          Start typing a city (3+ letters) to see nearby charging stations within ~50 km.
+        </Card>
+      )}
       {searched && !loading && !error && stations.length === 0 && (
-        <div className="empty-state">No charging stations found near "{place.trim()}".</div>
+        <Card className="mb-4 border-dashed p-5 text-sm text-muted-foreground">
+          No charging stations found near "{place.trim()}".
+        </Card>
       )}
 
       {(center || stations.length > 0) && (
-        <div className="charging-map-pane">
+        <div className="mb-4 h-[320px] overflow-hidden rounded-2xl border border-border">
           <RouteMap
             positions={null}
             distanceKm={0}
@@ -121,9 +135,14 @@ export default function ChargingView() {
       )}
 
       {stations.length > 0 && (
-        <ul className="charger-list">
+        <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {stations.map((s) => (
-            <li key={s.id ?? `${s.lat}-${s.lon}`}>{s.title}</li>
+            <li
+              key={s.id ?? `${s.lat}-${s.lon}`}
+              className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
+            >
+              {s.title}
+            </li>
           ))}
         </ul>
       )}

@@ -1,11 +1,17 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
+import { SlidersHorizontal, Loader2, AlertCircle } from 'lucide-react';
 import { DEFAULT_TARIFF } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments } from '@/lib/segments';
 import { useSettings } from '@/lib/settingsContext';
 import { useTripHistory } from '@/lib/tripHistoryContext';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Skeleton } from '@/components/ui/skeleton';
+import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet';
+import VerdictCard from './VerdictCard';
 import ResultsPanel from './ResultsPanel';
 import GuidancePanel from './GuidancePanel';
 import AssumptionsPopover from './AssumptionsPopover';
@@ -82,6 +88,7 @@ export default function DriverView() {
   const [recommendedStop, setRecommendedStop] = useState(null);
   const [weatherWarning, setWeatherWarning] = useState(false);
   const [chargingWarning, setChargingWarning] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   // SettingsProvider loads its saved tariff from localStorage in an effect, which runs
   // AFTER this component's first render — so the useState above can seed from the stale
@@ -150,6 +157,7 @@ export default function DriverView() {
     setRecommendedStop(null);
     setWeatherWarning(false);
     setChargingWarning(false);
+    setSheetOpen(false);
 
     try {
       const routeRes = await fetch('/api/route', {
@@ -252,70 +260,135 @@ export default function DriverView() {
       : 'Stop needed (no charger found nearby)'
     : '—';
 
+  const verdictProps = result
+    ? {
+        status: result.feasible ? 'ok' : 'warn',
+        headline: result.feasible
+          ? `You'll make it — arrive ${Math.round(result.arrival_soc_pct)}%`
+          : recommendedStop
+          ? `Charge once at ${recommendedStop.title}`
+          : 'Charging stop needed en route',
+        subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km`,
+        confidenceLow: result.confidence_low,
+        confidenceHigh: result.confidence_high,
+      }
+    : null;
+
+  const inputsForm = (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap gap-2">
+        <Button variant="secondary" size="sm" onClick={() => applyPreset(HERO_PRESET)} type="button">
+          {HERO_PRESET.label}
+        </Button>
+        <Button variant="secondary" size="sm" onClick={() => applyPreset(NASHIK_PRESET)} type="button">
+          {NASHIK_PRESET.label}
+        </Button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+          Origin
+          <input
+            className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+            value={origin}
+            onChange={(e) => setOrigin(e.target.value)}
+            placeholder="e.g. Mumbai"
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+          Destination
+          <input
+            className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+            value={destination}
+            onChange={(e) => setDestination(e.target.value)}
+            placeholder="e.g. Pune"
+          />
+        </label>
+      </div>
+      <div className="grid grid-cols-3 gap-3">
+        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+          Payload (kg)
+          <input
+            type="number"
+            className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+            value={payload}
+            onChange={(e) => setPayload(Number(e.target.value))}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+          Battery (%)
+          <input
+            type="number"
+            min="0"
+            max="100"
+            className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+            value={battery}
+            onChange={(e) => setBattery(Number(e.target.value))}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+          Tariff (₹/kWh)
+          <input
+            type="number"
+            step="0.1"
+            className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+            value={tariff}
+            onChange={(e) => setTariff(Number(e.target.value))}
+          />
+        </label>
+      </div>
+      <Button
+        size="lg"
+        onClick={() => handleCalculate()}
+        disabled={loading || !origin || !destination}
+        type="button"
+      >
+        {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+        {loading ? 'Optimising…' : 'Optimise Trip'}
+      </Button>
+      {error && (
+        <div className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+          <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          {error}
+        </div>
+      )}
+      {weatherWarning && (
+        <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+          Live weather unavailable — using default conditions.
+        </div>
+      )}
+      {chargingWarning && (
+        <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
+          Couldn't fetch nearby chargers — charger markers may be incomplete.
+        </div>
+      )}
+    </div>
+  );
+
   return (
-    <div className="driver-view">
-      <div className="driver-form">
-        <div className="preset-row">
-          <button className="preset-btn" onClick={() => applyPreset(HERO_PRESET)} type="button">
-            {HERO_PRESET.label}
-          </button>
-          <button className="preset-btn" onClick={() => applyPreset(NASHIK_PRESET)} type="button">
-            {NASHIK_PRESET.label}
-          </button>
-        </div>
-        <div className="form-row">
-          <label>
-            Origin
-            <input value={origin} onChange={(e) => setOrigin(e.target.value)} placeholder="e.g. Mumbai" />
-          </label>
-          <label>
-            Destination
-            <input
-              value={destination}
-              onChange={(e) => setDestination(e.target.value)}
-              placeholder="e.g. Pune"
-            />
-          </label>
-        </div>
-        <div className="form-row">
-          <label>
-            Payload (kg)
-            <input type="number" value={payload} onChange={(e) => setPayload(Number(e.target.value))} />
-          </label>
-          <label>
-            Battery (%)
-            <input
-              type="number"
-              min="0"
-              max="100"
-              value={battery}
-              onChange={(e) => setBattery(Number(e.target.value))}
-            />
-          </label>
-          <label>
-            Tariff (₹/kWh)
-            <input type="number" step="0.1" value={tariff} onChange={(e) => setTariff(Number(e.target.value))} />
-          </label>
-        </div>
-        <button
-          className="calculate-btn"
-          onClick={() => handleCalculate()}
-          disabled={loading || !origin || !destination}
-        >
-          {loading && <span className="spinner" aria-hidden="true" />}
-          {loading ? 'Optimising…' : 'Optimise Trip'}
-        </button>
-        {error && <div className="error-banner">{error}</div>}
-        {weatherWarning && (
-          <div className="warning-note">Live weather unavailable — using default conditions.</div>
-        )}
-        {chargingWarning && (
-          <div className="warning-note">Couldn't fetch nearby chargers — charger markers may be incomplete.</div>
-        )}
+    <div className="mx-auto max-w-7xl">
+      {/* Mobile: collapsible inputs sheet */}
+      <div className="mb-4 lg:hidden">
+        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+          <SheetTrigger asChild>
+            <Button variant="secondary" className="w-full justify-between" type="button">
+              <span className="flex items-center gap-2">
+                <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
+                {origin && destination ? `${origin} → ${destination}` : 'Plan a trip'}
+              </span>
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="bottom" title="Trip details">
+            {inputsForm}
+          </SheetContent>
+        </Sheet>
       </div>
 
-      <div className="driver-body">
-        <div className="map-pane">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1.5fr_1fr] lg:items-start">
+        {/* Desktop: inline inputs pane */}
+        <Card className="hidden p-5 lg:block">{inputsForm}</Card>
+
+        {/* Mobile order: verdict, metrics, map, guidance. Desktop: map is the center pane. */}
+        <div className="order-2 h-[320px] overflow-hidden rounded-2xl border border-border lg:order-none lg:h-[560px]">
           <RouteMap
             positions={positions}
             distanceKm={result?.dist_km || (route ? route.distance_m / 1000 : 0)}
@@ -323,29 +396,34 @@ export default function DriverView() {
             recommendedStop={recommendedStop}
           />
         </div>
-        <div className="side-pane">
+
+        <div className="order-1 flex flex-col gap-4 lg:order-none">
           {!result && !loading && (
-            <div className="empty-state">
-              Pick a preset above, or enter a trip and hit "Optimise Trip" to see the route,
-              energy use, and driver guidance.
-            </div>
+            <Card className="flex items-center gap-2 border-dashed p-5 text-sm text-muted-foreground">
+              Pick a preset above, or enter a trip and hit "Optimise Trip" to see the route, energy
+              use, and driver guidance.
+            </Card>
           )}
           {loading && !result && (
-            <div className="empty-state">
-              <span className="spinner spinner-dark" aria-hidden="true" />
-              Calculating route and energy use…
-            </div>
+            <Card className="p-5">
+              <Skeleton className="mb-3 h-6 w-2/3" />
+              <Skeleton className="mb-2 h-4 w-full" />
+              <Skeleton className="h-4 w-1/2" />
+            </Card>
           )}
-          <ResultsPanel result={result} chargingNeed={chargingNeed} />
+
+          {result && verdictProps && <VerdictCard {...verdictProps} />}
+
+          {result && <ResultsPanel result={result} chargingNeed={chargingNeed} />}
+
           {result && (
-            <div className="trip-plan-panel">
-              <h3>YOUR TRIP PLAN</h3>
+            <Card className="p-5">
+              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                Your trip plan
+              </h3>
               <GuidancePanel result={result} chargingNeed={chargingNeed} weather={weatherData} />
-              <div className="confidence-line">
-                Confidence: {result.confidence_low}–{result.confidence_high}%
-              </div>
               <AssumptionsPopover />
-            </div>
+            </Card>
           )}
         </div>
       </div>

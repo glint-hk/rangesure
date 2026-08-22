@@ -55,9 +55,11 @@ export default function RouteMap({
   return (
     <div style={{ position: 'relative', height: '100%', width: '100%' }}>
       {hasRoute ? (
-        <div className="map-badge">Recommended route · {Math.round(distanceKm)} km</div>
+        <div className="absolute right-3 top-3 z-[500] rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg">
+          Recommended route · {Math.round(distanceKm)} km
+        </div>
       ) : (
-        <div className="map-badge map-badge-muted">
+        <div className="absolute right-3 top-3 z-[500] rounded-full bg-background-alt/90 px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-lg">
           {chargers.length > 0 ? `${chargers.length} charger${chargers.length === 1 ? '' : 's'} found` : emptyLabel}
         </div>
       )}

@@ -1,9 +1,14 @@
 'use client';
 import { useState } from 'react';
+import { Loader2 } from 'lucide-react';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments } from '@/lib/segments';
 import { useSettings } from '@/lib/settingsContext';
 import { fmtNum, fmtRound } from '@/lib/format';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import MetricTile from './MetricTile';
 
 const FLEET_PRESET = [
   { truck: 'Truck 01', origin: 'Mumbai', destination: 'Pune', payload: 4000, battery: 80 },
@@ -76,96 +81,104 @@ export default function FleetView() {
     ? validRows.reduce((a, r) => a + r.cost_per_km, 0) / validRows.length
     : 0;
 
+  const columns = [
+    { key: 'dist_km', label: 'Distance (km)' },
+    { key: 'kWh_per_km', label: 'kWh/km' },
+    { key: 'cost_per_km', label: '₹/km' },
+    { key: 'predicted_full_range_km', label: 'Range (km)' },
+    { key: 'arrival_soc_pct', label: 'Arrival (%)' },
+  ];
+
   return (
-    <div className="fleet-view">
-      <div className="fleet-header">
-        <h2>Fleet dashboard</h2>
-        <button type="button" onClick={runFleet} disabled={loading}>
-          {loading && <span className="spinner" aria-hidden="true" />}
+    <div className="mx-auto max-w-5xl">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-lg font-bold text-foreground">Fleet dashboard</h2>
+        <Button type="button" onClick={runFleet} disabled={loading}>
+          {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
           {loading ? 'Running fleet…' : 'Run fleet'}
-        </button>
+        </Button>
       </div>
 
       {rows.length === 0 && !loading && (
-        <div className="empty-state">
+        <Card className="border-dashed p-5 text-sm text-muted-foreground">
           Click "Run fleet" to compute range and cost for 6 sample trucks using the same physics
           model as Plan Trip.
-        </div>
+        </Card>
       )}
       {loading && rows.length === 0 && (
-        <div className="empty-state">
-          <span className="spinner spinner-dark" aria-hidden="true" />
+        <Card className="flex items-center gap-2 p-5 text-sm text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
           Running each truck's route through the model…
-        </div>
+        </Card>
       )}
 
       {errorCount > 0 && (
-        <div className="error-banner">
+        <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
           {errorCount} of {rows.length} trucks failed to load — see the row for details.
         </div>
       )}
 
       {rows.length > 0 && (
-        <div className="fleet-dashboard-strip">
-          <div>
-            <span className="stat-value">{fmtNum(totalEnergy, 1)}</span>
-            <span className="stat-label">kWh total</span>
-          </div>
-          <div>
-            <span className="stat-value">₹{fmtNum(avgCostPerKm, 2)}</span>
-            <span className="stat-label">avg ₹/km</span>
-          </div>
-          <div>
-            <span className="stat-value">{needsChargeCount}</span>
-            <span className="stat-label">trips needing a charge stop</span>
-          </div>
+        <div className="mb-4 grid grid-cols-3 gap-3">
+          <MetricTile label="kWh total" value={fmtNum(totalEnergy, 1)} />
+          <MetricTile label="avg ₹/km" value={`₹${fmtNum(avgCostPerKm, 2)}`} />
+          <MetricTile label="Trips needing a charge stop" value={needsChargeCount} />
         </div>
       )}
 
       {rows.length > 0 && (
-        <div className="table-scroll">
-        <table className="fleet-table">
-          <thead>
-            <tr>
-              <th onClick={() => toggleSort('truck')}>Truck</th>
-              <th>Route</th>
-              <th onClick={() => toggleSort('dist_km')}>Distance (km)</th>
-              <th onClick={() => toggleSort('kWh_per_km')}>kWh/km</th>
-              <th onClick={() => toggleSort('cost_per_km')}>₹/km</th>
-              <th onClick={() => toggleSort('predicted_full_range_km')}>Range (km)</th>
-              <th onClick={() => toggleSort('arrival_soc_pct')}>Arrival (%)</th>
-              <th>Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((r) => (
-              <tr key={r.truck}>
-                <td>{r.truck}</td>
-                <td>
-                  {r.origin} → {r.destination}
-                </td>
-                {r.error ? (
-                  <td colSpan={6} className="row-error">
-                    {r.error}
-                  </td>
-                ) : (
-                  <>
-                    <td>{fmtNum(r.dist_km, 0)}</td>
-                    <td>{fmtNum(r.kWh_per_km, 2)}</td>
-                    <td>₹{fmtNum(r.cost_per_km, 2)}</td>
-                    <td>{fmtRound(r.predicted_full_range_km)}</td>
-                    <td>{fmtRound(r.arrival_soc_pct)}%</td>
-                    <td>
-                      <span className={`badge ${r.feasible ? 'ok' : 'warn'}`}>
-                        {r.feasible ? 'Feasible' : 'Needs charge'}
-                      </span>
-                    </td>
-                  </>
-                )}
+        <div className="overflow-x-auto rounded-2xl border border-border">
+          <table className="w-full border-collapse bg-surface text-sm">
+            <thead>
+              <tr>
+                <th
+                  className="cursor-pointer px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground"
+                  onClick={() => toggleSort('truck')}
+                >
+                  Truck
+                </th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground">Route</th>
+                {columns.map((c) => (
+                  <th
+                    key={c.key}
+                    className="cursor-pointer px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground"
+                    onClick={() => toggleSort(c.key)}
+                  >
+                    {c.label}
+                  </th>
+                ))}
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground">Status</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {sorted.map((r) => (
+                <tr key={r.truck} className="border-t border-border">
+                  <td className="px-3 py-2.5 font-medium text-foreground">{r.truck}</td>
+                  <td className="px-3 py-2.5 text-muted-foreground">
+                    {r.origin} → {r.destination}
+                  </td>
+                  {r.error ? (
+                    <td colSpan={6} className="px-3 py-2.5 text-xs text-danger">
+                      {r.error}
+                    </td>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2.5">{fmtNum(r.dist_km, 0)}</td>
+                      <td className="px-3 py-2.5">{fmtNum(r.kWh_per_km, 2)}</td>
+                      <td className="px-3 py-2.5">₹{fmtNum(r.cost_per_km, 2)}</td>
+                      <td className="px-3 py-2.5">{fmtRound(r.predicted_full_range_km)}</td>
+                      <td className="px-3 py-2.5">{fmtRound(r.arrival_soc_pct)}%</td>
+                      <td className="px-3 py-2.5">
+                        <Badge variant={r.feasible ? 'success' : 'warning'}>
+                          {r.feasible ? 'Feasible' : 'Needs charge'}
+                        </Badge>
+                      </td>
+                    </>
+                  )}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>

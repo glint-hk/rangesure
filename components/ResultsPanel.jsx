@@ -1,5 +1,6 @@
 'use client';
 import { fmtNum, fmtRound } from '@/lib/format';
+import MetricTile from './MetricTile';
 
 // Card order and wording are fixed by the board deck — do not reorder or rename.
 export default function ResultsPanel({ result, chargingNeed }) {
@@ -15,12 +16,9 @@ export default function ResultsPanel({ result, chargingNeed }) {
   ];
 
   return (
-    <div className="card-grid">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {cards.map((c) => (
-        <div className="result-card" key={c.label}>
-          <div className="result-card-label">{c.label}</div>
-          <div className="result-card-value">{c.value}</div>
-        </div>
+        <MetricTile key={c.label} label={c.label} value={c.value} />
       ))}
     </div>
   );

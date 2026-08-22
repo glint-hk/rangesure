@@ -1,15 +1,19 @@
 'use client';
 import { useTripHistory } from '@/lib/tripHistoryContext';
 import { fmtNum, fmtRound } from '@/lib/format';
+import { Card } from '@/components/ui/card';
+import MetricTile from './MetricTile';
 
 export default function ReportsView() {
   const { trips } = useTripHistory();
 
   if (trips.length === 0) {
     return (
-      <div className="reports-view">
-        <h2>Reports</h2>
-        <div className="empty-state">No trips logged yet — run trips on Plan Trip to build up data here.</div>
+      <div className="mx-auto max-w-5xl">
+        <h2 className="mb-4 text-lg font-bold text-foreground">Reports</h2>
+        <Card className="border-dashed p-5 text-sm text-muted-foreground">
+          No trips logged yet — run trips on Plan Trip to build up data here.
+        </Card>
       </div>
     );
   }
@@ -35,18 +39,15 @@ export default function ReportsView() {
   ];
 
   return (
-    <div className="reports-view">
-      <h2>Reports</h2>
-      <p className="settings-hint">
-        Aggregated from every trip logged on Plan Trip. Fleet runs aren't included — Fleet has
-        its own dashboard.
+    <div className="mx-auto max-w-5xl">
+      <h2 className="mb-1 text-lg font-bold text-foreground">Reports</h2>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Aggregated from every trip logged on Plan Trip. Fleet runs aren't included — Fleet has its
+        own dashboard.
       </p>
-      <div className="card-grid reports-grid">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {stats.map(([label, value]) => (
-          <div className="result-card" key={label}>
-            <div className="result-card-label">{label}</div>
-            <div className="result-card-value">{value}</div>
-          </div>
+          <MetricTile key={label} label={label} value={value} />
         ))}
       </div>
     </div>

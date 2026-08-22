@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useState } from 'react';
+import { Skeleton } from '@/components/ui/skeleton';
 
 // /api/guidance always resolves with { tips: [...] } (falling back to a rule-based
 // summary server-side on any LLM failure), so this only needs to handle network errors.
@@ -49,14 +50,31 @@ export default function GuidancePanel({ result, chargingNeed, weather }) {
     };
   }, [result, chargingNeed, weather]);
 
-  if (loading) return <div className="guidance-loading">Generating guidance…</div>;
-  if (error) return <div className="guidance-error">Guidance unavailable — computed numbers above still stand.</div>;
+  if (loading) {
+    return (
+      <div className="mb-4 space-y-2">
+        <Skeleton className="h-4 w-full" />
+        <Skeleton className="h-4 w-5/6" />
+        <Skeleton className="h-4 w-2/3" />
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <div className="mb-4 text-sm text-muted-foreground">
+        Guidance unavailable — computed numbers above still stand.
+      </div>
+    );
+  }
   if (!tips.length) return null;
 
   return (
-    <ul className="guidance-list">
+    <ul className="mb-4 space-y-2 text-sm leading-relaxed text-foreground">
       {tips.slice(0, 4).map((t, i) => (
-        <li key={i}>{t}</li>
+        <li key={i} className="flex gap-2">
+          <span className="text-primary">•</span>
+          {t}
+        </li>
       ))}
     </ul>
   );

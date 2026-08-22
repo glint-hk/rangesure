@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { useSettings } from '@/lib/settingsContext';
+import { Button } from '@/components/ui/button';
 
 // min/max guard the physics model's divisors (eta_dt, battery_kWh) from being set to
 // 0 or negative, which would produce Infinity/NaN throughout the app. Clamped on blur,
@@ -50,16 +51,22 @@ export default function SettingsView() {
     setSaved(true);
   };
 
+  const inputClass =
+    'h-10 rounded-lg border border-border bg-surface px-2.5 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50';
+
   return (
-    <div className="settings-view">
-      <h2>Vehicle & pricing settings</h2>
-      <p className="settings-hint">
+    <div className="mx-auto max-w-5xl">
+      <h2 className="mb-1 text-lg font-bold text-foreground">Vehicle &amp; pricing settings</h2>
+      <p className="mb-4 -mt-0.5 text-sm text-muted-foreground">
         These feed the physics model on every Plan Trip calculation and Fleet run — changes apply
         immediately and are saved in this browser only.
       </p>
-      <div className="settings-grid">
+      <div className="mb-4 grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
         {FIELDS.map((f) => (
-          <label key={f.key} className="settings-field">
+          <label
+            key={f.key}
+            className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface-raised p-3 text-xs text-muted-foreground"
+          >
             {f.label}
             <input
               type="number"
@@ -69,10 +76,11 @@ export default function SettingsView() {
               value={vehicle[f.key]}
               onChange={(e) => handleFieldChange(f.key, e.target.value)}
               onBlur={() => handleFieldBlur(f)}
+              className={inputClass}
             />
           </label>
         ))}
-        <label className="settings-field">
+        <label className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface-raised p-3 text-xs text-muted-foreground">
           Default tariff (₹/kWh)
           <input
             type="number"
@@ -87,21 +95,22 @@ export default function SettingsView() {
               setTariff((t) => Math.max(0, Number.isNaN(t) ? 0 : t));
               setSaved(true);
             }}
+            className={inputClass}
           />
         </label>
       </div>
-      <div className="settings-actions">
-        <button
+      <div className="flex items-center gap-3">
+        <Button
           type="button"
-          className="secondary-btn"
+          variant="secondary"
           onClick={() => {
             resetDefaults();
             setSaved(true);
           }}
         >
           Reset to defaults
-        </button>
-        {saved && <span className="settings-saved">Saved</span>}
+        </Button>
+        {saved && <span className="text-sm font-semibold text-success">Saved</span>}
       </div>
     </div>
   );
