@@ -1,9 +1,10 @@
 'use client';
-import { Route, History, Truck, Zap, BarChart3, Settings } from 'lucide-react';
+import { Route, ShieldCheck, History, Truck, Zap, BarChart3, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const NAV_ITEMS = [
   { key: 'plan', label: 'Plan Trip', icon: Route },
+  { key: 'guarantee', label: 'Guarantee', icon: ShieldCheck },
   { key: 'trips', label: 'Trips', icon: History },
   { key: 'fleet', label: 'Fleet', icon: Truck },
   { key: 'charging', label: 'Charging', icon: Zap },

@@ -10,6 +10,7 @@ import { assessConfidence } from '@/lib/governance';
 import { calibrate, explainCalibration, CALIBRATION_TRAINED_ON } from '@/lib/calibration';
 import { useSettings } from '@/lib/settingsContext';
 import { useTripHistory } from '@/lib/tripHistoryContext';
+import { useLastTrip } from '@/lib/lastTripContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -22,6 +23,7 @@ import GuidancePanel from './GuidancePanel';
 import AssumptionsPopover from './AssumptionsPopover';
 import AiModelPanel from './AiModelPanel';
 import AskBox from './AskBox';
+import CohortAnomalyBanner from './CohortAnomalyBanner';
 
 const RouteMap = dynamic(() => import('./RouteMap'), { ssr: false });
 
@@ -89,6 +91,7 @@ function deriveFromKwhPerKm(kWh_per_km, dist_km, batteryPct, tariffVal, vehicleP
 export default function DriverView() {
   const { vehicle, tariff: settingsTariff, selectVehicle, chargerKW } = useSettings();
   const { addTrip } = useTripHistory();
+  const { setLastTrip } = useLastTrip();
 
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
@@ -295,6 +298,16 @@ export default function DriverView() {
         climbResult
       );
       setResult(r);
+      setLastTrip({
+        origin: tripOrigin,
+        destination: tripDestination,
+        dist_km: r.dist_km,
+        tariff: tripTariff,
+        vehicleName: vehicle.name,
+        expected_kwh_per_km: r.scenarios.expected.kWh_per_km,
+        best_kwh_per_km: r.scenarios.best.kWh_per_km,
+        worst_kwh_per_km: r.scenarios.worst.kWh_per_km,
+      });
       addTrip({
         origin: tripOrigin,
         destination: tripDestination,
@@ -354,6 +367,16 @@ export default function DriverView() {
     const r = recompute(origin, destination, route, weatherSamples, payload, battery, tariff, climbInfo);
     setResult(r);
     setRecommendedStop(!r.feasible && chargers.length > 0 ? chargers[0] : null);
+    setLastTrip({
+      origin,
+      destination,
+      dist_km: r.dist_km,
+      tariff,
+      vehicleName: vehicle.name,
+      expected_kwh_per_km: r.scenarios.expected.kWh_per_km,
+      best_kwh_per_km: r.scenarios.best.kWh_per_km,
+      worst_kwh_per_km: r.scenarios.worst.kWh_per_km,
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [payload, battery, tariff, vehicle]);
 
@@ -619,6 +642,10 @@ export default function DriverView() {
               <Skeleton className="mb-2 h-4 w-full" />
               <Skeleton className="h-4 w-1/2" />
             </Card>
+          )}
+
+          {result && (
+            <CohortAnomalyBanner vehicleName={vehicle.name} expectedKwhPerKm={result.kWh_per_km} />
           )}
 
           {result && verdictProps && <VerdictCard {...verdictProps} />}

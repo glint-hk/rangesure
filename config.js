@@ -81,3 +81,10 @@ export const DEFAULT_VEHICLE = { ...SHARED_PARAMS, ...VEHICLES.find((v) => v.nam
 export const DEFAULT_TARIFF = 8.5; // ₹/kWh (assumption)
 
 export const DEFAULT_CHARGER_KW = 120; // DC fast-charge power assumption, ₹/kWh unrelated
+
+// Route Guarantee (lib/guarantee.js) defaults — the illustrative underwriting model's
+// assumptions, editable on Settings so the CFO-facing numbers are never a black box.
+export const DEFAULT_GUARANTEE_PCT = 96; // house guarantee level shown by default
+export const DEFAULT_MARGIN = 0.08; // Tata's margin on top of cost + risk buffer
+export const DEFAULT_DISRUPTION_COST_PER_KM = 2.0; // ₹/km residual-risk load for the rare miss
+export const BASELINE_TRIPS = 1500; // reference trip count the risk band (best/worst) was sized against

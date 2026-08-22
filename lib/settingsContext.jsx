@@ -1,10 +1,18 @@
 'use client';
 import { createContext, useContext, useEffect, useState } from 'react';
-import { VEHICLES, SHARED_PARAMS, DEFAULT_VEHICLE, DEFAULT_TARIFF, DEFAULT_CHARGER_KW } from '@/config';
+import {
+  VEHICLES,
+  SHARED_PARAMS,
+  DEFAULT_VEHICLE,
+  DEFAULT_TARIFF,
+  DEFAULT_CHARGER_KW,
+  DEFAULT_MARGIN,
+  DEFAULT_DISRUPTION_COST_PER_KM,
+} from '@/config';
 
-// v2: bumped when VEHICLE became the VEHICLES preset array (P0-2) — v1 payloads lack
-// `name`/`payload_max_kg` and would leave a stale shape merged into the new defaults.
-const STORAGE_KEY = 'rangesure-settings-v2';
+// v3: bumped when the Route Guarantee margin/disruption-cost assumptions were added —
+// older payloads simply lack those keys and fall back to the config.js defaults below.
+const STORAGE_KEY = 'rangesure-settings-v3';
 const SettingsContext = createContext(null);
 
 // Vehicle params + default tariff, editable on the Settings page and used live by
@@ -14,6 +22,8 @@ export function SettingsProvider({ children }) {
   const [vehicle, setVehicle] = useState(DEFAULT_VEHICLE);
   const [tariff, setTariff] = useState(DEFAULT_TARIFF);
   const [chargerKW, setChargerKW] = useState(DEFAULT_CHARGER_KW);
+  const [margin, setMargin] = useState(DEFAULT_MARGIN);
+  const [disruptionCostPerKm, setDisruptionCostPerKm] = useState(DEFAULT_DISRUPTION_COST_PER_KM);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
@@ -24,6 +34,8 @@ export function SettingsProvider({ children }) {
         if (parsed.vehicle) setVehicle({ ...DEFAULT_VEHICLE, ...parsed.vehicle });
         if (typeof parsed.tariff === 'number') setTariff(parsed.tariff);
         if (typeof parsed.chargerKW === 'number') setChargerKW(parsed.chargerKW);
+        if (typeof parsed.margin === 'number') setMargin(parsed.margin);
+        if (typeof parsed.disruptionCostPerKm === 'number') setDisruptionCostPerKm(parsed.disruptionCostPerKm);
       }
     } catch {
       // corrupt or blocked storage — keep defaults
@@ -34,11 +46,14 @@ export function SettingsProvider({ children }) {
   useEffect(() => {
     if (!loaded) return;
     try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ vehicle, tariff, chargerKW }));
+      window.localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ vehicle, tariff, chargerKW, margin, disruptionCostPerKm })
+      );
     } catch {
       // storage unavailable — settings just won't persist across reloads
     }
-  }, [vehicle, tariff, chargerKW, loaded]);
+  }, [vehicle, tariff, chargerKW, margin, disruptionCostPerKm, loaded]);
 
   // Manual nudge of the current vehicle's params (Settings page sliders) — keeps
   // whichever preset name is already selected.
@@ -55,11 +70,26 @@ export function SettingsProvider({ children }) {
     setVehicle(DEFAULT_VEHICLE);
     setTariff(DEFAULT_TARIFF);
     setChargerKW(DEFAULT_CHARGER_KW);
+    setMargin(DEFAULT_MARGIN);
+    setDisruptionCostPerKm(DEFAULT_DISRUPTION_COST_PER_KM);
   };
 
   return (
     <SettingsContext.Provider
-      value={{ vehicle, tariff, setTariff, chargerKW, setChargerKW, updateVehicle, selectVehicle, resetDefaults }}
+      value={{
+        vehicle,
+        tariff,
+        setTariff,
+        chargerKW,
+        setChargerKW,
+        margin,
+        setMargin,
+        disruptionCostPerKm,
+        setDisruptionCostPerKm,
+        updateVehicle,
+        selectVehicle,
+        resetDefaults,
+      }}
     >
       {children}
     </SettingsContext.Provider>

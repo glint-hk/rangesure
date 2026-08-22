@@ -26,7 +26,19 @@ function clamp(value, field) {
 }
 
 export default function SettingsView() {
-  const { vehicle, tariff, setTariff, chargerKW, setChargerKW, updateVehicle, resetDefaults } = useSettings();
+  const {
+    vehicle,
+    tariff,
+    setTariff,
+    chargerKW,
+    setChargerKW,
+    margin,
+    setMargin,
+    disruptionCostPerKm,
+    setDisruptionCostPerKm,
+    updateVehicle,
+    resetDefaults,
+  } = useSettings();
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -111,6 +123,42 @@ export default function SettingsView() {
             }}
             onBlur={() => {
               setChargerKW((k) => Math.max(1, Number.isNaN(k) ? 1 : k));
+              setSaved(true);
+            }}
+            className={inputClass}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface-raised p-3 text-xs text-muted-foreground">
+          Route Guarantee margin (%)
+          <input
+            type="number"
+            step={1}
+            min={0}
+            value={Math.round(margin * 100)}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (!Number.isNaN(n)) setMargin(n / 100);
+            }}
+            onBlur={() => {
+              setMargin((m) => Math.max(0, Number.isNaN(m) ? 0 : m));
+              setSaved(true);
+            }}
+            className={inputClass}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface-raised p-3 text-xs text-muted-foreground">
+          Disruption cost (₹/km, rare-miss load)
+          <input
+            type="number"
+            step={0.1}
+            min={0}
+            value={disruptionCostPerKm}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (!Number.isNaN(n)) setDisruptionCostPerKm(n);
+            }}
+            onBlur={() => {
+              setDisruptionCostPerKm((d) => Math.max(0, Number.isNaN(d) ? 0 : d));
               setSaved(true);
             }}
             className={inputClass}
