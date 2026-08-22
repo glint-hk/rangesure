@@ -1,9 +1,12 @@
 'use client';
 import { useMemo, useState } from 'react';
-import { Loader2, TriangleAlert } from 'lucide-react';
-import { VEHICLES, SHARED_PARAMS } from '@/config';
+import { Loader2, TriangleAlert, ShieldCheck } from 'lucide-react';
+import { VEHICLES, SHARED_PARAMS, DEFAULT_GUARANTEE_PCT, BASELINE_TRIPS } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments } from '@/lib/segments';
+import { runScenarios } from '@/lib/scenarios';
+import { priceGuarantee, estimateTripsToUnderwrite } from '@/lib/guarantee';
+import { getCorridorTrips, getCorridorKey } from '@/data/corridors';
 import { useSettings } from '@/lib/settingsContext';
 import { fmtNum, fmtRound } from '@/lib/format';
 import { Button } from '@/components/ui/button';
@@ -12,14 +15,19 @@ import { Badge } from '@/components/ui/badge';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import MetricTile from './MetricTile';
 
+// annualTrips is an illustrative dispatch-frequency assumption (one-way runs/year on
+// that corridor) used only to size the Guarantee book's contract value — not a routing
+// input, and not derived from anything the app measures.
 const FLEET_PRESET = [
-  { truck: 'Truck 01', origin: 'Mumbai', destination: 'Pune', payload: 4000, battery: 90 },
-  { truck: 'Truck 02', origin: 'Delhi', destination: 'Jaipur', payload: 6000, battery: 90 },
-  { truck: 'Truck 03', origin: 'Bengaluru', destination: 'Chennai', payload: 5000, battery: 75 },
-  { truck: 'Truck 04', origin: 'Ahmedabad', destination: 'Surat', payload: 3000, battery: 85 },
-  { truck: 'Truck 05', origin: 'Chennai', destination: 'Coimbatore', payload: 4500, battery: 70 },
-  { truck: 'Truck 06', origin: 'Pune', destination: 'Nashik', payload: 3500, battery: 95 },
+  { truck: 'Truck 01', origin: 'Mumbai', destination: 'Pune', payload: 4000, battery: 90, annualTrips: 250 },
+  { truck: 'Truck 02', origin: 'Delhi', destination: 'Jaipur', payload: 6000, battery: 90, annualTrips: 200 },
+  { truck: 'Truck 03', origin: 'Bengaluru', destination: 'Chennai', payload: 5000, battery: 75, annualTrips: 220 },
+  { truck: 'Truck 04', origin: 'Ahmedabad', destination: 'Surat', payload: 3000, battery: 85, annualTrips: 260 },
+  { truck: 'Truck 05', origin: 'Chennai', destination: 'Coimbatore', payload: 4500, battery: 70, annualTrips: 180 },
+  { truck: 'Truck 06', origin: 'Pune', destination: 'Nashik', payload: 3500, battery: 95, annualTrips: 240 },
 ];
+
+const HOUSE_GUARANTEE_PCT = 96;
 
 // A trip is MARGINAL when it's feasible but the arrival SOC is within 5 points of the
 // reserve buffer — likely to flip to "needs charge" on a slightly worse day.
@@ -28,7 +36,7 @@ const MARGIN_THRESHOLD_PTS = 5;
 const LARGEST_BATTERY_VEHICLE = VEHICLES.reduce((a, b) => (b.battery_kWh > a.battery_kWh ? b : a));
 
 export default function FleetView() {
-  const { vehicle, tariff, selectVehicle } = useSettings();
+  const { vehicle, tariff, selectVehicle, margin, disruptionCostPerKm } = useSettings();
   const [rows, setRows] = useState([]); // { truck, origin, destination, payload, battery, segments, error }
   const [rowVehicleNames, setRowVehicleNames] = useState({}); // truck -> vehicle name override
   const [loading, setLoading] = useState(false);
@@ -61,19 +69,56 @@ export default function FleetView() {
 
   // Re-derives each row's numbers from its stored segments whenever the fleet-wide
   // vehicle, a per-row override, or the tariff changes — no re-fetch needed, mirrors
-  // Plan Trip's live-recompute pattern.
+  // Plan Trip's live-recompute pattern. Also runs the best/expected/worst scenario band
+  // (not just a single physics estimate) so each corridor can be priced by the
+  // Guarantee book (G5) the same way Plan Trip prices a single trip.
   const computedRows = useMemo(
     () =>
       rows.map((row) => {
         if (row.error) return row;
         const vName = rowVehicleNames[row.truck] || vehicle.name;
         const params = vName === vehicle.name ? vehicle : { ...SHARED_PARAMS, ...VEHICLES.find((v) => v.name === vName) };
-        const r = estimateTrip({ segments: row.segments, payloadKg: row.payload, battery_pct: row.battery, tariff, params });
-        const margin = r.arrival_soc_pct - params.reserve_pct;
-        const status = margin < 0 ? 'infeasible' : margin <= MARGIN_THRESHOLD_PTS ? 'marginal' : 'feasible';
-        return { ...row, ...r, vehicleName: vName, status };
+        const { best, expected, worst } = runScenarios({
+          segments: row.segments,
+          payloadKg: row.payload,
+          battery_pct: row.battery,
+          tariff,
+          params,
+        });
+        const r = expected;
+        const marginPts = r.arrival_soc_pct - params.reserve_pct;
+        const status = marginPts < 0 ? 'infeasible' : marginPts <= MARGIN_THRESHOLD_PTS ? 'marginal' : 'feasible';
+
+        const corridorTrips = getCorridorTrips(row.origin, row.destination);
+        const guaranteeArgs = {
+          expected_kwh_per_km: expected.kWh_per_km,
+          best_kwh_per_km: best.kWh_per_km,
+          worst_kwh_per_km: worst.kWh_per_km,
+          tariff,
+          guarantee_pct: HOUSE_GUARANTEE_PCT,
+          corridor_trips: corridorTrips,
+          baseline_trips: BASELINE_TRIPS,
+          margin,
+          disruption_cost_per_km: disruptionCostPerKm,
+        };
+        const guarantee = priceGuarantee(guaranteeArgs);
+        const annualKm = r.dist_km * row.annualTrips;
+        const tripsNeeded = guarantee.underwritable ? null : estimateTripsToUnderwrite(guaranteeArgs);
+
+        return {
+          ...row,
+          ...r,
+          vehicleName: vName,
+          status,
+          corridorKey: getCorridorKey(row.origin, row.destination),
+          corridorTrips,
+          guarantee,
+          annualKm,
+          contractValue: guarantee.committed_price_per_km * annualKm,
+          tripsNeeded,
+        };
       }),
-    [rows, rowVehicleNames, vehicle, tariff]
+    [rows, rowVehicleNames, vehicle, tariff, margin, disruptionCostPerKm]
   );
 
   const toggleSort = (key) => {
@@ -100,6 +145,19 @@ export default function FleetView() {
   const totalEnergy = validRows.reduce((a, r) => a + (r.total_kWh || 0), 0);
   const avgCostPerKm = validRows.length
     ? validRows.reduce((a, r) => a + r.cost_per_km, 0) / validRows.length
+    : 0;
+
+  // G5: the Guarantee book — same corridors, priced at the house guarantee level
+  // (HOUSE_GUARANTEE_PCT) instead of a per-trip picked one. Only underwritable
+  // corridors count toward the book's contract value; the rest are flagged, not
+  // silently priced anyway.
+  const underwritableRows = validRows.filter((r) => r.guarantee?.underwritable);
+  const notUnderwritableRows = validRows.filter((r) => r.guarantee && !r.guarantee.underwritable);
+  const totalContractValue = underwritableRows.reduce((a, r) => a + r.contractValue, 0);
+  const totalUnderwritableKm = underwritableRows.reduce((a, r) => a + r.annualKm, 0);
+  const weightedAvgBuffer = totalUnderwritableKm
+    ? underwritableRows.reduce((a, r) => a + (r.guarantee.committed_price_per_km - r.guarantee.expected_cost_per_km) * r.annualKm, 0) /
+      totalUnderwritableKm
     : 0;
 
   const STATUS_BADGE = {
@@ -174,6 +232,40 @@ export default function FleetView() {
           {MARGIN_THRESHOLD_PTS} pts of reserve) — assign the {LARGEST_BATTERY_VEHICLE.name} or add
           a planned charge.
         </div>
+      )}
+
+      {validRows.length > 0 && (
+        <Card className="mb-4 p-5">
+          <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <ShieldCheck className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
+            Guarantee book · {HOUSE_GUARANTEE_PCT}% house guarantee
+          </h3>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <MetricTile
+              label="Guaranteed contract value"
+              value={`₹${(totalContractValue / 100000).toFixed(2)}L`}
+              trend="annualized, underwritable corridors only"
+            />
+            <MetricTile label="Weighted avg risk buffer" value={`₹${fmtNum(weightedAvgBuffer, 2)}`} unit="/km" />
+            <MetricTile
+              label="Corridors underwritable"
+              value={`${underwritableRows.length} of ${validRows.length}`}
+            />
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground">
+            {notUnderwritableRows.length === 0
+              ? `All ${validRows.length} corridors are underwritable today at the ${HOUSE_GUARANTEE_PCT}% house guarantee.`
+              : `${underwritableRows.length} of ${validRows.length} corridors are underwritable today; ${
+                  notUnderwritableRows.length
+                } need${notUnderwritableRows.length === 1 ? 's' : ''} more trip history — ${notUnderwritableRows
+                  .map((r) =>
+                    r.tripsNeeded
+                      ? `${r.truck} (~${(r.tripsNeeded - r.corridorTrips).toLocaleString()} more)`
+                      : `${r.truck} (not reachable at this guarantee level)`
+                  )
+                  .join(', ')}.`}
+          </p>
+        </Card>
       )}
 
       {rows.length > 0 && (
