@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { CheckCircle2, AlertTriangle, XCircle, ShieldAlert, ChevronDown } from 'lucide-react';
+import { CheckCircle2, AlertTriangle, XCircle, ShieldAlert, ChevronDown, Mountain } from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
@@ -60,6 +60,7 @@ export default function VerdictCard({
   scenarios,
   chargeInfo,
   chargerTitle,
+  climb,
   why,
   children,
 }) {
@@ -101,6 +102,20 @@ export default function VerdictCard({
                 <li key={i}>• {r}</li>
               ))}
             </ul>
+          )}
+
+          {/* Safety-critical and actionable (a real speed to hold, not just informational),
+              so it gets its own callout near the top rather than being buried as one of
+              several guidance bullets further down the page. */}
+          {climb && (
+            <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-sm text-foreground">
+              <Mountain className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+              <span className="break-words">
+                Steep climb{climb.name ? ` near ${climb.name}` : ''}
+                {climb.grade ? ` (${climb.grade} grade)` : ''}
+                {climb.recommended_speed_kmh ? ` — hold ~${climb.recommended_speed_kmh} km/h` : ''}
+              </span>
+            </div>
           )}
 
           {(confidenceLow != null && confidenceHigh != null) && (

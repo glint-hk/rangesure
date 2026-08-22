@@ -500,6 +500,13 @@ export default function DriverView() {
       ? null
       : Math.round(Math.max(0, chargePlan.final_arrival_soc_pct));
 
+  // Surfaced as its own callout on the verdict card (not just a guidance bullet) —
+  // a safe speed to hold on the steepest climb is actionable and safety-relevant, so
+  // it shouldn't depend on the LLM guidance panel loading or choosing to mention it.
+  const climb = result?.notable_climb
+    ? { ...result.notable_climb, recommended_speed_kmh: result.recommended_speed_kmh }
+    : null;
+
   const verdictProps =
     result && chargePlan
       ? chargePlan.status === 'infeasible'
@@ -520,6 +527,7 @@ export default function DriverView() {
             reasons: governance.reasons,
             fallbackActive: true,
             scenarios: result.scenarios,
+            climb,
           }
         : chargePlan.status === 'ok'
         ? {
@@ -529,6 +537,7 @@ export default function DriverView() {
             confidenceLow: result.confidence_low,
             confidenceHigh: result.confidence_high,
             scenarios: result.scenarios,
+            climb,
           }
         : {
             status: 'warn',
@@ -540,6 +549,7 @@ export default function DriverView() {
             confidenceLow: result.confidence_low,
             confidenceHigh: result.confidence_high,
             scenarios: result.scenarios,
+            climb,
             chargeInfo,
             chargerTitle: chargePlan.stops.length === 1 ? chargePlan.stops[0].charger.title : null,
             children:
