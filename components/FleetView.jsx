@@ -1,7 +1,7 @@
 'use client';
-import { useState } from 'react';
-import { Loader2 } from 'lucide-react';
-import { VEHICLES } from '@/config';
+import { useMemo, useState } from 'react';
+import { Loader2, TriangleAlert } from 'lucide-react';
+import { VEHICLES, SHARED_PARAMS } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments } from '@/lib/segments';
 import { useSettings } from '@/lib/settingsContext';
@@ -13,7 +13,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import MetricTile from './MetricTile';
 
 const FLEET_PRESET = [
-  { truck: 'Truck 01', origin: 'Mumbai', destination: 'Pune', payload: 4000, battery: 80 },
+  { truck: 'Truck 01', origin: 'Mumbai', destination: 'Pune', payload: 4000, battery: 90 },
   { truck: 'Truck 02', origin: 'Delhi', destination: 'Jaipur', payload: 6000, battery: 90 },
   { truck: 'Truck 03', origin: 'Bengaluru', destination: 'Chennai', payload: 5000, battery: 75 },
   { truck: 'Truck 04', origin: 'Ahmedabad', destination: 'Surat', payload: 3000, battery: 85 },
@@ -21,15 +21,23 @@ const FLEET_PRESET = [
   { truck: 'Truck 06', origin: 'Pune', destination: 'Nashik', payload: 3500, battery: 95 },
 ];
 
+// A trip is MARGINAL when it's feasible but the arrival SOC is within 5 points of the
+// reserve buffer — likely to flip to "needs charge" on a slightly worse day.
+const MARGIN_THRESHOLD_PTS = 5;
+
+const LARGEST_BATTERY_VEHICLE = VEHICLES.reduce((a, b) => (b.battery_kWh > a.battery_kWh ? b : a));
+
 export default function FleetView() {
   const { vehicle, tariff, selectVehicle } = useSettings();
-  const [rows, setRows] = useState([]);
+  const [rows, setRows] = useState([]); // { truck, origin, destination, payload, battery, segments, error }
+  const [rowVehicleNames, setRowVehicleNames] = useState({}); // truck -> vehicle name override
   const [loading, setLoading] = useState(false);
   const [sortKey, setSortKey] = useState('truck');
   const [sortAsc, setSortAsc] = useState(true);
 
   const runFleet = async () => {
     setLoading(true);
+    setRowVehicleNames({});
     const results = [];
     // Sequential, not Promise.all — keeps us under ORS/OCM rate limits.
     for (const trip of FLEET_PRESET) {
@@ -42,14 +50,7 @@ export default function FleetView() {
         const routeData = await routeRes.json();
         if (!routeRes.ok) throw new Error(routeData.error || 'Route failed');
         const segments = buildSegments(routeData.coordinates, routeData.distance_m, routeData.duration_s);
-        const r = estimateTrip({
-          segments,
-          payloadKg: trip.payload,
-          battery_pct: trip.battery,
-          tariff,
-          params: vehicle,
-        });
-        results.push({ ...trip, ...r, error: null });
+        results.push({ ...trip, segments, error: null });
       } catch (err) {
         results.push({ ...trip, error: err.message || 'Failed to compute' });
       }
@@ -57,6 +58,23 @@ export default function FleetView() {
     setRows(results);
     setLoading(false);
   };
+
+  // Re-derives each row's numbers from its stored segments whenever the fleet-wide
+  // vehicle, a per-row override, or the tariff changes — no re-fetch needed, mirrors
+  // Plan Trip's live-recompute pattern.
+  const computedRows = useMemo(
+    () =>
+      rows.map((row) => {
+        if (row.error) return row;
+        const vName = rowVehicleNames[row.truck] || vehicle.name;
+        const params = vName === vehicle.name ? vehicle : { ...SHARED_PARAMS, ...VEHICLES.find((v) => v.name === vName) };
+        const r = estimateTrip({ segments: row.segments, payloadKg: row.payload, battery_pct: row.battery, tariff, params });
+        const margin = r.arrival_soc_pct - params.reserve_pct;
+        const status = margin < 0 ? 'infeasible' : margin <= MARGIN_THRESHOLD_PTS ? 'marginal' : 'feasible';
+        return { ...row, ...r, vehicleName: vName, status };
+      }),
+    [rows, rowVehicleNames, vehicle, tariff]
+  );
 
   const toggleSort = (key) => {
     if (sortKey === key) setSortAsc(!sortAsc);
@@ -66,7 +84,7 @@ export default function FleetView() {
     }
   };
 
-  const sorted = [...rows].sort((a, b) => {
+  const sorted = [...computedRows].sort((a, b) => {
     const va = a[sortKey];
     const vb = b[sortKey];
     if (va == null) return 1;
@@ -75,13 +93,20 @@ export default function FleetView() {
     return sortAsc ? va - vb : vb - va;
   });
 
-  const validRows = rows.filter((r) => !r.error);
-  const errorCount = rows.length - validRows.length;
-  const needsChargeCount = validRows.filter((r) => !r.feasible).length;
+  const validRows = computedRows.filter((r) => !r.error);
+  const errorCount = computedRows.length - validRows.length;
+  const needsChargeCount = validRows.filter((r) => r.status === 'infeasible').length;
+  const marginalCount = validRows.filter((r) => r.status === 'marginal').length;
   const totalEnergy = validRows.reduce((a, r) => a + (r.total_kWh || 0), 0);
   const avgCostPerKm = validRows.length
     ? validRows.reduce((a, r) => a + r.cost_per_km, 0) / validRows.length
     : 0;
+
+  const STATUS_BADGE = {
+    feasible: { variant: 'success', label: 'Feasible' },
+    marginal: { variant: 'warning', label: 'Marginal' },
+    infeasible: { variant: 'danger', label: 'Infeasible' },
+  };
 
   const columns = [
     { key: 'dist_km', label: 'Distance (km)' },
@@ -92,7 +117,7 @@ export default function FleetView() {
   ];
 
   return (
-    <div className="mx-auto max-w-5xl">
+    <div className="mx-auto max-w-6xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-foreground">Fleet dashboard</h2>
         <div className="flex items-center gap-2">
@@ -130,7 +155,7 @@ export default function FleetView() {
 
       {errorCount > 0 && (
         <div className="mb-4 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
-          {errorCount} of {rows.length} trucks failed to load — see the row for details.
+          {errorCount} of {computedRows.length} trucks failed to load — see the row for details.
         </div>
       )}
 
@@ -139,6 +164,15 @@ export default function FleetView() {
           <MetricTile label="kWh total" value={fmtNum(totalEnergy, 1)} />
           <MetricTile label="avg ₹/km" value={`₹${fmtNum(avgCostPerKm, 2)}`} />
           <MetricTile label="Trips needing a charge stop" value={needsChargeCount} />
+        </div>
+      )}
+
+      {marginalCount > 0 && (
+        <div className="mb-4 flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm text-warning">
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+          {marginalCount} route{marginalCount === 1 ? ' is' : 's are'} marginal (within{' '}
+          {MARGIN_THRESHOLD_PTS} pts of reserve) — assign the {LARGEST_BATTERY_VEHICLE.name} or add
+          a planned charge.
         </div>
       )}
 
@@ -154,6 +188,7 @@ export default function FleetView() {
                   Truck
                 </th>
                 <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground">Route</th>
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted-foreground">Vehicle</th>
                 {columns.map((c) => (
                   <th
                     key={c.key}
@@ -174,20 +209,35 @@ export default function FleetView() {
                     {r.origin} → {r.destination}
                   </td>
                   {r.error ? (
-                    <td colSpan={6} className="px-3 py-2.5 text-xs text-danger">
+                    <td colSpan={7} className="px-3 py-2.5 text-xs text-danger">
                       {r.error}
                     </td>
                   ) : (
                     <>
+                      <td className="px-3 py-2.5">
+                        <Select
+                          value={r.vehicleName}
+                          onValueChange={(name) => setRowVehicleNames((m) => ({ ...m, [r.truck]: name }))}
+                        >
+                          <SelectTrigger className="h-8 w-36 text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {VEHICLES.map((v) => (
+                              <SelectItem key={v.name} value={v.name}>
+                                {v.name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
                       <td className="px-3 py-2.5">{fmtNum(r.dist_km, 0)}</td>
                       <td className="px-3 py-2.5">{fmtNum(r.kWh_per_km, 2)}</td>
                       <td className="px-3 py-2.5">₹{fmtNum(r.cost_per_km, 2)}</td>
                       <td className="px-3 py-2.5">{fmtRound(r.predicted_full_range_km)}</td>
                       <td className="px-3 py-2.5">{fmtRound(r.arrival_soc_pct)}%</td>
                       <td className="px-3 py-2.5">
-                        <Badge variant={r.feasible ? 'success' : 'warning'}>
-                          {r.feasible ? 'Feasible' : 'Needs charge'}
-                        </Badge>
+                        <Badge variant={STATUS_BADGE[r.status].variant}>{STATUS_BADGE[r.status].label}</Badge>
                       </td>
                     </>
                   )}
