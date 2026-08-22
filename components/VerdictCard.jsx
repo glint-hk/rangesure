@@ -44,6 +44,10 @@ const STATUS_STYLES = {
 const SCALE_MIN = -40;
 const SCALE_MAX = 100;
 const scalePct = (v) => Math.max(0, Math.min(100, ((v - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100));
+// Displayed percentages are always clamped to a sane 0-100% range — the gauge bar above
+// can still reflect a deeply negative worst-case position, but the number never reads
+// as "-196%" (never feasible/meaningful as a battery percentage).
+const clampDisplayPct = (v) => Math.max(0, Math.min(100, Math.round(v)));
 
 export default function VerdictCard({
   status = 'ok',
@@ -72,8 +76,24 @@ export default function VerdictCard({
             <Badge variant={s.badgeVariant}>{s.badgeLabel}</Badge>
             {fallbackActive && <Badge variant="warning">Safe fallback active</Badge>}
           </div>
-          <h2 className="text-xl font-bold leading-snug text-foreground sm:text-2xl">{headline}</h2>
-          {subline && <p className="mt-1 text-sm text-muted-foreground">{subline}</p>}
+          <h2
+            title={headline}
+            className={cn(
+              // line-clamp-3, not 2: this column can be narrow (the right rail on
+              // desktop), and even a short fixed message like "Low confidence — manual
+              // planning advised" wraps to 3 lines there — clamping at 2 was cutting
+              // real words off a headline that isn't even a long variable place name.
+              'line-clamp-3 break-words font-bold leading-snug text-foreground',
+              headline && headline.length > 40 ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl'
+            )}
+          >
+            {headline}
+          </h2>
+          {subline && (
+            <p className="mt-1 line-clamp-3 break-words text-sm text-muted-foreground" title={subline}>
+              {subline}
+            </p>
+          )}
 
           {reasons.length > 0 && (
             <ul className="mt-3 space-y-1 text-sm text-warning">
@@ -94,8 +114,8 @@ export default function VerdictCard({
               <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
                 <span>Repeatability — arrival battery</span>
                 <span className="font-medium text-foreground">
-                  {Math.round(scenarios.worst.arrival_soc_pct)}–{Math.round(scenarios.best.arrival_soc_pct)}%
-                  <span className="text-muted-foreground"> (expected {Math.round(scenarios.expected.arrival_soc_pct)}%)</span>
+                  {clampDisplayPct(scenarios.worst.arrival_soc_pct)}–{clampDisplayPct(scenarios.best.arrival_soc_pct)}%
+                  <span className="text-muted-foreground"> (expected {clampDisplayPct(scenarios.expected.arrival_soc_pct)}%)</span>
                 </span>
               </div>
               <div className="relative h-2 overflow-hidden rounded-full bg-surface-raised">
@@ -116,8 +136,8 @@ export default function VerdictCard({
 
           {chargeInfo?.charge_minutes != null && (
             <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-foreground">
-              <span>
-                Add ~{chargeInfo.charge_minutes} min at {chargerTitle || 'a nearby charger'}
+              <span className="break-words">
+                Add ~{chargeInfo.charge_minutes} min {chargerTitle ? `at ${chargerTitle}` : 'across the planned stops'}
               </span>
               {chargeInfo.windowVerdict && (
                 <Badge variant={chargeInfo.windowVerdict.onTime ? 'success' : 'danger'}>

@@ -1,8 +1,9 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import { haversineKm } from '@/lib/utils';
 import PlaceAutocomplete from './PlaceAutocomplete';
 
 const RouteMap = dynamic(() => import('./RouteMap'), { ssr: false });
@@ -78,6 +79,16 @@ export default function ChargingView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [place]);
 
+  // Nearest-first: each charger gets its haversine distance from the searched place,
+  // shown on the card and used to sort the list.
+  const sortedStations = useMemo(() => {
+    if (!center || !stations.length) return stations;
+    const [centerLat, centerLon] = center;
+    return stations
+      .map((s) => ({ ...s, distance_km: haversineKm(centerLat, centerLon, s.lat, s.lon) }))
+      .sort((a, b) => a.distance_km - b.distance_km);
+  }, [stations, center]);
+
   return (
     <div className="mx-auto max-w-5xl">
       <h2 className="mb-4 text-lg font-bold text-foreground">Charging network</h2>
@@ -124,7 +135,7 @@ export default function ChargingView() {
           <RouteMap
             positions={null}
             distanceKm={0}
-            chargers={stations}
+            chargers={sortedStations}
             recommendedStop={null}
             center={center}
             emptyLabel="Search a location to see chargers"
@@ -132,14 +143,19 @@ export default function ChargingView() {
         </div>
       )}
 
-      {stations.length > 0 && (
+      {sortedStations.length > 0 && (
         <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {stations.map((s) => (
+          {sortedStations.map((s) => (
             <li
               key={s.id ?? `${s.lat}-${s.lon}`}
-              className="rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
+              className="min-w-0 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
             >
-              {s.title}
+              <div className="truncate break-words" title={s.title}>
+                {s.title}
+              </div>
+              {s.distance_km != null && (
+                <div className="mt-0.5 text-xs text-muted-foreground">{s.distance_km.toFixed(1)} km away</div>
+              )}
             </li>
           ))}
         </ul>

@@ -7,6 +7,7 @@ import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments, findSteepestClimb } from '@/lib/segments';
 import { runScenarios } from '@/lib/scenarios';
 import { assessConfidence } from '@/lib/governance';
+import { planChargingStops, chargeMinutesForStop } from '@/lib/chargingPlan';
 import { calibrate, explainCalibration, CALIBRATION_TRAINED_ON } from '@/lib/calibration';
 import { useSettings } from '@/lib/settingsContext';
 import { useTripHistory } from '@/lib/tripHistoryContext';
@@ -40,11 +41,12 @@ const HERO_PRESET = {
 };
 
 // A longer, lower-battery trip that should trip the charging-stop path in the demo.
+// Payload must never exceed the demo-default Ultra E.9's payload_max_kg (4,000).
 const NASHIK_PRESET = {
   label: 'Nashik run (needs charge)',
   origin: 'Mumbai',
   destination: 'Nashik',
-  payload: 6000,
+  payload: 4000,
   battery: 20,
   tariff: DEFAULT_TARIFF,
 };
@@ -61,6 +63,21 @@ const CALIBRATION_TOLERANCE = 0.05;
 // Weather is sampled at these fractions of route distance (start, ~1/3, ~2/3, end)
 // instead of one midpoint, so temp/headwind vary segment-to-segment on long routes.
 const WEATHER_SAMPLE_FRACTIONS = [0, 1 / 3, 2 / 3, 1];
+
+// Tracks the `lg` breakpoint (matches Tailwind's default 1024px) so the "Your trip
+// plan" panel can render once, in the correct DOM location for the current layout,
+// instead of mounting two copies (which would double-fire the guidance/ask fetches).
+function useIsDesktop() {
+  const [isDesktop, setIsDesktop] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia('(min-width: 1024px)');
+    setIsDesktop(mql.matches);
+    const handler = (e) => setIsDesktop(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+  return isDesktop;
+}
 
 // Derives a safe eco-speed for the steepest climb — scaled down from the route's
 // average speed by how severe the grade is, floored so it never suggests crawling.
@@ -92,6 +109,7 @@ export default function DriverView() {
   const { vehicle, tariff: settingsTariff, selectVehicle, chargerKW } = useSettings();
   const { addTrip } = useTripHistory();
   const { setLastTrip } = useLastTrip();
+  const isDesktop = useIsDesktop();
 
   const [origin, setOrigin] = useState('');
   const [destination, setDestination] = useState('');
@@ -108,10 +126,10 @@ export default function DriverView() {
   const [climbInfo, setClimbInfo] = useState({ notable_climb: null, recommended_speed_kmh: null });
   const [chargers, setChargers] = useState([]);
   const [result, setResult] = useState(null);
-  const [recommendedStop, setRecommendedStop] = useState(null);
   const [weatherWarning, setWeatherWarning] = useState(false);
   const [chargingWarning, setChargingWarning] = useState(false);
   const [elevationMissing, setElevationMissing] = useState(false);
+  const [payloadClamped, setPayloadClamped] = useState(false);
 
   // SettingsProvider loads its saved tariff from localStorage in an effect, which runs
   // AFTER this component's first render — so the useState above can seed from the stale
@@ -210,7 +228,6 @@ export default function DriverView() {
     setPrimaryWeather(null);
     setClimbInfo({ notable_climb: null, recommended_speed_kmh: null });
     setChargers([]);
-    setRecommendedStop(null);
     setWeatherWarning(false);
     setChargingWarning(false);
     setElevationMissing(false);
@@ -333,7 +350,6 @@ export default function DriverView() {
         if (!chargingRes.ok) throw new Error('charging lookup failed');
         const stations = chargingData.stations || [];
         setChargers(stations);
-        setRecommendedStop(!r.feasible && stations.length > 0 ? stations[0] : null);
       } catch {
         setChargers([]);
         setChargingWarning(true);
@@ -348,7 +364,10 @@ export default function DriverView() {
   const handleVehicleChange = (name) => {
     selectVehicle(name);
     const preset = VEHICLES.find((v) => v.name === name);
-    if (preset) setPayload((p) => Math.min(p, preset.payload_max_kg));
+    if (preset) {
+      setPayload((p) => Math.max(0, Math.min(p, preset.payload_max_kg)));
+      setPayloadClamped(false);
+    }
   };
 
   const applyPreset = (preset) => {
@@ -366,7 +385,6 @@ export default function DriverView() {
     if (!route) return;
     const r = recompute(origin, destination, route, weatherSamples, payload, battery, tariff, climbInfo);
     setResult(r);
-    setRecommendedStop(!r.feasible && chargers.length > 0 ? chargers[0] : null);
     setLastTrip({
       origin,
       destination,
@@ -402,18 +420,39 @@ export default function DriverView() {
 
   const isFallback = governance ? governance.degraded || governance.uncertain : false;
 
-  // Charge time + delivery-window impact (P1-3): only meaningful for needs-charge
-  // trips. kWh_needed closes the gap from the (negative/below-reserve) arrival SOC up
-  // to the reserve buffer — a simplified single-stop model, consistent with the rest
-  // of the app's "first charger found" approach.
+  // Reachability-based charging plan (replaces the old "always recommend stations[0]"
+  // logic): walks cumulative calibrated energy draw along the route to find where SOC
+  // would breach the reserve buffer, then picks the LAST charger actually reachable
+  // before that point — so a lower starting battery can produce a nearer/different
+  // stop than a higher one on the same route, and a trip that can't reach any charger
+  // is reported honestly instead of showing a negative arrival %.
+  const chargePlan = useMemo(() => {
+    if (!result) return null;
+    return planChargingStops({
+      perSeg: result.perSeg,
+      calibrationFactor: result.calibration_factor,
+      chargers,
+      batteryKwh: vehicle.battery_kWh,
+      startSocPct: battery,
+      reservePct: vehicle.reserve_pct,
+    });
+  }, [result, chargers, vehicle.battery_kWh, vehicle.reserve_pct, battery]);
+
+  const recommendedStop = chargePlan?.stops?.[0]?.charger ?? null;
+
+  // Charge time + delivery-window impact (P1-3): only shown when a stop (or sequence
+  // of stops) can actually rescue the trip — never for the infeasible/no-reachable-
+  // charger case. Each stop is assumed to top up to 100% before continuing, matching
+  // planChargingStops' own simulation.
   const chargeInfo = useMemo(() => {
-    if (!result || result.feasible || !route) return null;
-    const kWh_needed = Math.max(0, ((vehicle.reserve_pct - result.arrival_soc_pct) / 100) * vehicle.battery_kWh);
-    const charge_minutes = chargerKW > 0 ? Math.ceil((kWh_needed / chargerKW) * 60) : null;
+    if (!chargePlan || chargePlan.status !== 'needs-stop' || !route) return null;
+    const perStopMinutes = chargePlan.stops.map((s) => chargeMinutesForStop(s, vehicle.battery_kWh, chargerKW));
+    if (perStopMinutes.some((m) => m == null)) return null;
+    const charge_minutes = perStopMinutes.reduce((a, m) => a + m, 0);
 
     let windowVerdict = null;
     const windowHours = Number(deliveryWindow);
-    if (deliveryWindow !== '' && Number.isFinite(windowHours) && windowHours > 0 && charge_minutes != null) {
+    if (deliveryWindow !== '' && Number.isFinite(windowHours) && windowHours > 0) {
       const routeHours = route.duration_s / 3600;
       const totalHours = routeHours + charge_minutes / 60;
       const slackMinutes = Math.round((windowHours - totalHours) * 60);
@@ -422,8 +461,8 @@ export default function DriverView() {
           ? { onTime: true, label: 'On time' }
           : { onTime: false, label: `Risks delivery window by ~${Math.abs(slackMinutes)} min` };
     }
-    return { kWh_needed, charge_minutes, windowVerdict };
-  }, [result, route, chargerKW, vehicle.reserve_pct, vehicle.battery_kWh, deliveryWindow]);
+    return { charge_minutes, windowVerdict };
+  }, [chargePlan, route, vehicle.battery_kWh, chargerKW, deliveryWindow]);
 
   // Stand-in trip log: every calculation logs its inputs, model version, confidence,
   // and whether the governance red-line kicked in — the demo highlight for P0-4.
@@ -440,41 +479,81 @@ export default function DriverView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result, governance]);
 
-  const chargingNeed = result
-    ? result.feasible
+  const chargingNeed =
+    !result || !chargePlan
+      ? '—'
+      : chargePlan.status === 'ok'
       ? 'No stop'
-      : recommendedStop
-      ? `Stop at ${recommendedStop.title}`
-      : 'Stop needed (no charger found nearby)'
-    : '—';
+      : chargePlan.status === 'infeasible'
+      ? 'Not feasible'
+      : chargePlan.stops.length === 1
+      ? `Stop at ${chargePlan.stops[0].charger.title}`
+      : `Needs ${chargePlan.stops.length} charge stops`;
 
-  const verdictProps = result
-    ? isFallback
-      ? {
-          status: 'uncertain',
-          headline: 'Low confidence — manual planning advised',
-          subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km — numbers below still apply, with a wider margin of error`,
-          confidenceLow: Math.max(0, result.confidence_low - 15),
-          confidenceHigh: Math.min(100, result.confidence_high + 5),
-          reasons: governance.reasons,
-          fallbackActive: true,
-          scenarios: result.scenarios,
-        }
-      : {
-          status: result.feasible ? 'ok' : 'warn',
-          headline: result.feasible
-            ? `You'll make it — arrive ${Math.round(result.arrival_soc_pct)}%`
-            : recommendedStop
-            ? `Charge once at ${recommendedStop.title}`
-            : 'Charging stop needed en route',
-          subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km`,
-          confidenceLow: result.confidence_low,
-          confidenceHigh: result.confidence_high,
-          scenarios: result.scenarios,
-          chargeInfo: !result.feasible ? chargeInfo : null,
-          chargerTitle: recommendedStop?.title,
-        }
-    : null;
+  // The one number every downstream consumer (metric tile, guidance bullets, the Ask
+  // box) must use instead of the raw result.arrival_soc_pct — that raw figure is a
+  // single-leg physics number and can be deeply negative (e.g. an infeasible Varanasi
+  // trip reads -196%). This is the post-charging-plan figure, clamped >= 0, or null
+  // when genuinely infeasible (no reachable charger).
+  const displayArrivalSocPct =
+    !chargePlan || chargePlan.status === 'infeasible'
+      ? null
+      : Math.round(Math.max(0, chargePlan.final_arrival_soc_pct));
+
+  const verdictProps =
+    result && chargePlan
+      ? chargePlan.status === 'infeasible'
+        ? {
+            // Governance red-line: never show a negative arrival % or a confident
+            // verdict when no charger is reachable before the reserve breach.
+            status: 'danger',
+            headline: 'Not feasible from this start SOC',
+            subline: 'No reachable charger before the reserve buffer would be breached — manual planning advised.',
+          }
+        : isFallback
+        ? {
+            status: 'uncertain',
+            headline: 'Low confidence — manual planning advised',
+            subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km — numbers below still apply, with a wider margin of error`,
+            confidenceLow: Math.max(0, result.confidence_low - 15),
+            confidenceHigh: Math.min(100, result.confidence_high + 5),
+            reasons: governance.reasons,
+            fallbackActive: true,
+            scenarios: result.scenarios,
+          }
+        : chargePlan.status === 'ok'
+        ? {
+            status: 'ok',
+            headline: `You'll make it — arrive ${displayArrivalSocPct}%`,
+            subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km`,
+            confidenceLow: result.confidence_low,
+            confidenceHigh: result.confidence_high,
+            scenarios: result.scenarios,
+          }
+        : {
+            status: 'warn',
+            headline:
+              chargePlan.stops.length === 1
+                ? `Charge once at ${chargePlan.stops[0].charger.title}`
+                : `Needs ${chargePlan.stops.length} charge stops`,
+            subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km`,
+            confidenceLow: result.confidence_low,
+            confidenceHigh: result.confidence_high,
+            scenarios: result.scenarios,
+            chargeInfo,
+            chargerTitle: chargePlan.stops.length === 1 ? chargePlan.stops[0].charger.title : null,
+            children:
+              chargePlan.stops.length > 1 ? (
+                <ul className="mt-3 space-y-1 text-sm text-foreground">
+                  {chargePlan.stops.map((s, i) => (
+                    <li key={i} className="break-words">
+                      Stop {i + 1}: {s.charger.title} (~{Math.round(s.at_km)} km in)
+                    </li>
+                  ))}
+                </ul>
+              ) : null,
+          }
+      : null;
 
   const inputsForm = (
     <div className="flex flex-col gap-4">
@@ -540,11 +619,22 @@ export default function DriverView() {
           Payload (kg, max {vehicle.payload_max_kg?.toLocaleString()})
           <input
             type="number"
+            min={0}
             max={vehicle.payload_max_kg}
             className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
             value={payload}
-            onChange={(e) => setPayload(Math.min(Number(e.target.value), vehicle.payload_max_kg))}
+            onChange={(e) => {
+              const raw = Number(e.target.value);
+              const max = vehicle.payload_max_kg;
+              setPayloadClamped(Number.isFinite(raw) && (raw > max || raw < 0));
+              setPayload(Number.isFinite(raw) ? Math.max(0, Math.min(raw, max)) : 0);
+            }}
           />
+          {payloadClamped && (
+            <span className="font-normal normal-case text-warning">
+              Clamped to the vehicle's payload range (0–{vehicle.payload_max_kg?.toLocaleString()} kg).
+            </span>
+          )}
         </label>
         <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
           Battery (%)
@@ -613,13 +703,47 @@ export default function DriverView() {
     </div>
   );
 
+  // "Your trip plan" — rendered once (never two mounted copies, which would double-fire
+  // the guidance/ask fetches) and placed responsively below: in the empty left column
+  // under the inputs on desktop, or stacked after the verdict/metrics on mobile.
+  const tripPlanCard = result && (
+    <Card className="p-5">
+      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        Your trip plan
+      </h3>
+      {result.physics_kWh_per_km != null && (
+        <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+          <div className="text-sm text-foreground">
+            Physics estimate <span className="font-mono">{result.physics_kWh_per_km.toFixed(2)}</span> kWh/km
+            {' → '}
+            Calibrated <span className="font-mono font-semibold text-primary">{result.kWh_per_km.toFixed(2)}</span> kWh/km
+            {' '}
+            <span className="text-muted-foreground">(learned from {result.calibration_trained_on?.toLocaleString()} trips)</span>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">{result.calibration_note}</div>
+        </div>
+      )}
+      <GuidancePanel result={result} chargingNeed={chargingNeed} weather={primaryWeather} arrivalSocPct={displayArrivalSocPct} />
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+        <AssumptionsPopover />
+        <AiModelPanel />
+      </div>
+      <AskBox result={result} arrivalSocPct={displayArrivalSocPct} />
+    </Card>
+  );
+
   return (
     <div className="mx-auto max-w-7xl">
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1.5fr_1fr] lg:items-start">
-        {/* Trip inputs — always visible inline, on mobile and desktop alike. */}
-        <Card className="p-5">{inputsForm}</Card>
+        {/* Trip inputs — always visible inline, on mobile and desktop alike. Desktop also
+            gets the Trip Plan panel directly beneath it, filling what used to be empty
+            space in this column. */}
+        <div className="flex flex-col gap-4">
+          <Card className="p-5">{inputsForm}</Card>
+          {isDesktop && tripPlanCard}
+        </div>
 
-        {/* Mobile order: verdict, metrics, map, guidance. Desktop: map is the center pane. */}
+        {/* Mobile order: verdict, metrics, trip plan, map. Desktop: map is the center pane. */}
         <div className="order-2 h-[320px] overflow-hidden rounded-2xl border border-border lg:order-none lg:h-[560px]">
           <RouteMap
             positions={positions}
@@ -650,33 +774,9 @@ export default function DriverView() {
 
           {result && verdictProps && <VerdictCard {...verdictProps} />}
 
-          {result && <ResultsPanel result={result} chargingNeed={chargingNeed} />}
+          {result && <ResultsPanel result={result} chargingNeed={chargingNeed} chargePlan={chargePlan} />}
 
-          {result && (
-            <Card className="p-5">
-              <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Your trip plan
-              </h3>
-              {result.physics_kWh_per_km != null && (
-                <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
-                  <div className="text-sm text-foreground">
-                    Physics estimate <span className="font-mono">{result.physics_kWh_per_km.toFixed(2)}</span> kWh/km
-                    {' → '}
-                    Calibrated <span className="font-mono font-semibold text-primary">{result.kWh_per_km.toFixed(2)}</span> kWh/km
-                    {' '}
-                    <span className="text-muted-foreground">(learned from {result.calibration_trained_on?.toLocaleString()} trips)</span>
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">{result.calibration_note}</div>
-                </div>
-              )}
-              <GuidancePanel result={result} chargingNeed={chargingNeed} weather={primaryWeather} />
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                <AssumptionsPopover />
-                <AiModelPanel />
-              </div>
-              <AskBox result={result} />
-            </Card>
-          )}
+          {result && !isDesktop && tripPlanCard}
         </div>
       </div>
     </div>

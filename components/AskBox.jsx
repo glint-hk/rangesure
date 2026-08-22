@@ -4,7 +4,10 @@ import { Loader2, Send } from 'lucide-react';
 import { CALIBRATION_COEFFICIENTS } from '@/lib/calibration';
 import { Button } from '@/components/ui/button';
 
-export default function AskBox({ result }) {
+// arrivalSocPct: the DISPLAY-safe arrival battery (post charging-plan, clamped >= 0, or
+// null when infeasible) — sent instead of result.arrival_soc_pct, which is the raw
+// single-leg physics number and can be deeply negative.
+export default function AskBox({ result, arrivalSocPct }) {
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -25,7 +28,7 @@ export default function AskBox({ result }) {
             physics_kwh_per_km: Number(result.physics_kWh_per_km?.toFixed(3)),
             calibrated_kwh_per_km: Number(result.kWh_per_km.toFixed(3)),
             predicted_full_range_km: Math.round(result.predicted_full_range_km),
-            arrival_soc_pct: Math.round(result.arrival_soc_pct),
+            arrival_soc_pct: arrivalSocPct,
             cost_per_km: Number(result.cost_per_km.toFixed(2)),
             feasible: result.feasible,
           },

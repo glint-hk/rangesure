@@ -17,12 +17,9 @@ function fallbackTips(t) {
   if (t.distance_km != null && t.kwh_per_km != null) {
     tips.push(`This ${Math.round(t.distance_km)} km trip is estimated at ${t.kwh_per_km} kWh/km.`);
   }
-  if (t.predicted_full_range_km != null && t.arrival_soc_pct != null) {
-    tips.push(
-      `Full-battery range is about ${Math.round(t.predicted_full_range_km)} km; expected arrival battery is ${Math.round(
-        t.arrival_soc_pct
-      )}%.`
-    );
+  if (t.predicted_full_range_km != null) {
+    const arrivalPart = t.arrival_soc_pct != null ? `; expected arrival battery is ${Math.round(t.arrival_soc_pct)}%` : '';
+    tips.push(`Full-battery range is about ${Math.round(t.predicted_full_range_km)} km${arrivalPart}.`);
   }
   if (t.notable_climb) {
     const name = t.notable_climb.name ? ` at ${t.notable_climb.name}` : '';
