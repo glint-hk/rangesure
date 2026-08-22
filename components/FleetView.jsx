@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { Loader2 } from 'lucide-react';
+import { VEHICLES } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments } from '@/lib/segments';
 import { useSettings } from '@/lib/settingsContext';
@@ -8,6 +9,7 @@ import { fmtNum, fmtRound } from '@/lib/format';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import MetricTile from './MetricTile';
 
 const FLEET_PRESET = [
@@ -20,7 +22,7 @@ const FLEET_PRESET = [
 ];
 
 export default function FleetView() {
-  const { vehicle, tariff } = useSettings();
+  const { vehicle, tariff, selectVehicle } = useSettings();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(false);
   const [sortKey, setSortKey] = useState('truck');
@@ -93,10 +95,24 @@ export default function FleetView() {
     <div className="mx-auto max-w-5xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-lg font-bold text-foreground">Fleet dashboard</h2>
-        <Button type="button" onClick={runFleet} disabled={loading}>
-          {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-          {loading ? 'Running fleet…' : 'Run fleet'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Select value={vehicle.name} onValueChange={selectVehicle}>
+            <SelectTrigger className="w-56">
+              <SelectValue placeholder="Select vehicle" />
+            </SelectTrigger>
+            <SelectContent>
+              {VEHICLES.map((v) => (
+                <SelectItem key={v.name} value={v.name}>
+                  {v.name} · {v.battery_kWh} kWh
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button type="button" onClick={runFleet} disabled={loading}>
+            {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
+            {loading ? 'Running fleet…' : 'Run fleet'}
+          </Button>
+        </div>
       </div>
 
       {rows.length === 0 && !loading && (

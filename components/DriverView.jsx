@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { SlidersHorizontal, Loader2, AlertCircle } from 'lucide-react';
-import { DEFAULT_TARIFF } from '@/config';
+import { SlidersHorizontal, Loader2, AlertCircle, Info } from 'lucide-react';
+import { DEFAULT_TARIFF, VEHICLES } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments } from '@/lib/segments';
 import { useSettings } from '@/lib/settingsContext';
@@ -11,6 +11,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import VerdictCard from './VerdictCard';
 import ResultsPanel from './ResultsPanel';
 import GuidancePanel from './GuidancePanel';
@@ -70,7 +72,7 @@ function findNotableClimb(perSeg) {
 }
 
 export default function DriverView() {
-  const { vehicle, tariff: settingsTariff } = useSettings();
+  const { vehicle, tariff: settingsTariff, selectVehicle } = useSettings();
   const { addTrip } = useTripHistory();
 
   const [origin, setOrigin] = useState('');
@@ -229,6 +231,12 @@ export default function DriverView() {
     }
   };
 
+  const handleVehicleChange = (name) => {
+    selectVehicle(name);
+    const preset = VEHICLES.find((v) => v.name === name);
+    if (preset) setPayload((p) => Math.min(p, preset.payload_max_kg));
+  };
+
   const applyPreset = (preset) => {
     setOrigin(preset.origin);
     setDestination(preset.destination);
@@ -238,14 +246,15 @@ export default function DriverView() {
     handleCalculate(preset);
   };
 
-  // Recompute live on slider changes — no refetch, reuses the already-fetched route + weather.
+  // Recompute live on slider/vehicle changes — no refetch, reuses the already-fetched
+  // route + weather.
   useEffect(() => {
     if (!route) return;
     const r = recompute(origin, destination, route, weatherData, payload, battery, tariff);
     setResult(r);
     setRecommendedStop(!r.feasible && chargers.length > 0 ? chargers[0] : null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload, battery, tariff]);
+  }, [payload, battery, tariff, vehicle]);
 
   const positions = useMemo(
     () => (route ? route.coordinates.map(([lon, lat]) => [lat, lon]) : null),
@@ -284,6 +293,35 @@ export default function DriverView() {
           {NASHIK_PRESET.label}
         </Button>
       </div>
+      <div className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+        <div className="flex items-center gap-1.5">
+          Vehicle
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button type="button" className="text-muted-foreground hover:text-foreground">
+                  <Info className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                Tata Motors CV, Auto Expo 2025 / 2026 delivery releases (estimated physics params).
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <Select value={vehicle.name} onValueChange={handleVehicleChange}>
+          <SelectTrigger>
+            <SelectValue placeholder="Select vehicle" />
+          </SelectTrigger>
+          <SelectContent>
+            {VEHICLES.map((v) => (
+              <SelectItem key={v.name} value={v.name}>
+                {v.name} · {v.battery_kWh} kWh · {v.payload_max_kg.toLocaleString()} kg payload
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
       <div className="grid grid-cols-2 gap-3">
         <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
           Origin
@@ -306,12 +344,13 @@ export default function DriverView() {
       </div>
       <div className="grid grid-cols-3 gap-3">
         <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
-          Payload (kg)
+          Payload (kg, max {vehicle.payload_max_kg?.toLocaleString()})
           <input
             type="number"
+            max={vehicle.payload_max_kg}
             className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
             value={payload}
-            onChange={(e) => setPayload(Number(e.target.value))}
+            onChange={(e) => setPayload(Math.min(Number(e.target.value), vehicle.payload_max_kg))}
           />
         </label>
         <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
