@@ -5,7 +5,8 @@ import { SlidersHorizontal, Loader2, AlertCircle, Info } from 'lucide-react';
 import { DEFAULT_TARIFF, VEHICLES } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments, findSteepestClimb } from '@/lib/segments';
-import { assessConfidence, STANDIN_WORST_CASE_PENALTY } from '@/lib/governance';
+import { runScenarios } from '@/lib/scenarios';
+import { assessConfidence } from '@/lib/governance';
 import { calibrate, explainCalibration, CALIBRATION_TRAINED_ON } from '@/lib/calibration';
 import { useSettings } from '@/lib/settingsContext';
 import { useTripHistory } from '@/lib/tripHistoryContext';
@@ -67,6 +68,24 @@ function climbSafeSpeedKmh(routeAvgKmh, gradePct) {
   return Math.max(30, Math.round(routeAvgKmh * (1 - reductionPct / 100)));
 }
 
+// Re-derives the trip's headline numbers from a (possibly calibrated) kWh/km value —
+// shared by the main result and each best/expected/worst scenario so they all use
+// exactly the same arithmetic.
+function deriveFromKwhPerKm(kWh_per_km, dist_km, batteryPct, tariffVal, vehicleParams) {
+  const total_kWh = kWh_per_km * dist_km;
+  const battery_kWh = vehicleParams.battery_kWh > 0 ? vehicleParams.battery_kWh : 1;
+  const predicted_full_range_km = kWh_per_km > 0 ? battery_kWh / kWh_per_km : Infinity;
+  const arrival_soc_pct = ((battery_kWh * (batteryPct / 100) - total_kWh) / battery_kWh) * 100;
+  return {
+    kWh_per_km,
+    total_kWh,
+    predicted_full_range_km,
+    arrival_soc_pct,
+    cost_per_km: kWh_per_km * tariffVal,
+    feasible: arrival_soc_pct >= vehicleParams.reserve_pct,
+  };
+}
+
 export default function DriverView() {
   const { vehicle, tariff: settingsTariff, selectVehicle } = useSettings();
   const { addTrip } = useTripHistory();
@@ -105,13 +124,17 @@ export default function DriverView() {
   // handleCalculate) and just attached here on every recompute, not re-derived.
   const recompute = (originVal, destinationVal, routeData, samples, payloadKg, batteryPct, tariffVal, climb) => {
     const segments = buildSegments(routeData.coordinates, routeData.distance_m, routeData.duration_s, samples);
-    const r = estimateTrip({
+    // Best/expected/worst (P1-2): "expected" is the same physics run as before; best
+    // and worst vary temp/headwind/payload to show a real repeatability band instead
+    // of a flat +/-band. All three get the same learned calibration factor below.
+    const { best, expected, worst } = runScenarios({
       segments,
       payloadKg,
       battery_pct: batteryPct,
       tariff: tariffVal,
       params: vehicle,
     });
+    const r = expected;
 
     console.log(`[EnergyModel] ${originVal} -> ${destinationVal}: physics kWh/km = ${r.kWh_per_km.toFixed(3)}`);
     const isHeroPreset =
@@ -141,33 +164,29 @@ export default function DriverView() {
 
     const calibrationFeatures = { distance_km: r.dist_km, avg_gradient, payload_kg: payloadKg, temp_c, avg_speed_kmh };
     const calibration_factor = calibrate(calibrationFeatures);
-    const physics_kWh_per_km = r.kWh_per_km;
-    const kWh_per_km = physics_kWh_per_km * calibration_factor;
-    const total_kWh = kWh_per_km * r.dist_km;
-    const battery_kWh = vehicle.battery_kWh > 0 ? vehicle.battery_kWh : 1;
-    const predicted_full_range_km = kWh_per_km > 0 ? battery_kWh / kWh_per_km : Infinity;
-    const arrival_soc_pct = ((battery_kWh * (batteryPct / 100) - total_kWh) / battery_kWh) * 100;
 
     console.log(
-      `[Calibration] factor ${calibration_factor.toFixed(3)}: physics ${physics_kWh_per_km.toFixed(
+      `[Calibration] factor ${calibration_factor.toFixed(3)}: physics ${r.kWh_per_km.toFixed(
         3
-      )} -> calibrated ${kWh_per_km.toFixed(3)} kWh/km`
+      )} -> calibrated ${(r.kWh_per_km * calibration_factor).toFixed(3)} kWh/km`
     );
+
+    // Same calibration factor applied to all three scenarios — it corrects a
+    // systematic bias in the physics model, not a specific day's conditions.
+    const calibrated = deriveFromKwhPerKm(best.kWh_per_km * calibration_factor, r.dist_km, batteryPct, tariffVal, vehicle);
+    const calibratedExpected = deriveFromKwhPerKm(r.kWh_per_km * calibration_factor, r.dist_km, batteryPct, tariffVal, vehicle);
+    const calibratedWorst = deriveFromKwhPerKm(worst.kWh_per_km * calibration_factor, r.dist_km, batteryPct, tariffVal, vehicle);
 
     return {
       ...r,
       ...climb,
-      physics_kWh_per_km,
-      kWh_per_km,
-      total_kWh,
-      predicted_full_range_km,
-      arrival_soc_pct,
-      cost_per_km: kWh_per_km * tariffVal,
-      feasible: arrival_soc_pct >= vehicle.reserve_pct,
+      physics_kWh_per_km: r.kWh_per_km,
+      ...calibratedExpected,
       calibration_factor,
       calibration_features: calibrationFeatures,
       calibration_note: explainCalibration(calibrationFeatures),
       calibration_trained_on: CALIBRATION_TRAINED_ON,
+      scenarios: { best: calibrated, expected: calibratedExpected, worst: calibratedWorst },
     };
   };
 
@@ -344,12 +363,8 @@ export default function DriverView() {
     [route]
   );
 
-  // Stand-in worst case until P1-2 wires in a real best/expected/worst scenario run —
-  // a flat pessimistic penalty on consumption, checked against the reserve buffer.
-  const worstCaseArrivalPct = useMemo(() => {
-    if (!result) return null;
-    return result.arrival_soc_pct - ((result.total_kWh * STANDIN_WORST_CASE_PENALTY) / vehicle.battery_kWh) * 100;
-  }, [result, vehicle.battery_kWh]);
+  // The real worst-case scenario (P1-2) — replaces the earlier flat-penalty stand-in.
+  const worstCaseArrivalPct = result?.scenarios?.worst?.arrival_soc_pct ?? null;
 
   const governance = useMemo(() => {
     if (!result) return null;
@@ -398,6 +413,7 @@ export default function DriverView() {
           confidenceHigh: Math.min(100, result.confidence_high + 5),
           reasons: governance.reasons,
           fallbackActive: true,
+          scenarios: result.scenarios,
         }
       : {
           status: result.feasible ? 'ok' : 'warn',
@@ -409,6 +425,7 @@ export default function DriverView() {
           subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km`,
           confidenceLow: result.confidence_low,
           confidenceHigh: result.confidence_high,
+          scenarios: result.scenarios,
         }
     : null;
 

@@ -38,6 +38,13 @@ const STATUS_STYLES = {
   },
 };
 
+// Fixed scale so the repeatability gauge reads consistently trip-to-trip, including
+// deeply infeasible ones (a small van on a highway route can show a large negative
+// arrival %).
+const SCALE_MIN = -40;
+const SCALE_MAX = 100;
+const scalePct = (v) => Math.max(0, Math.min(100, ((v - SCALE_MIN) / (SCALE_MAX - SCALE_MIN)) * 100));
+
 export default function VerdictCard({
   status = 'ok',
   headline,
@@ -46,6 +53,7 @@ export default function VerdictCard({
   confidenceHigh,
   reasons = [],
   fallbackActive = false,
+  scenarios,
   why,
   children,
 }) {
@@ -76,6 +84,31 @@ export default function VerdictCard({
           {(confidenceLow != null && confidenceHigh != null) && (
             <div className="mt-4 text-sm font-medium text-primary">
               Confidence: {confidenceLow}–{confidenceHigh}%
+            </div>
+          )}
+
+          {scenarios && (
+            <div className="mt-4">
+              <div className="mb-1.5 flex items-center justify-between text-xs text-muted-foreground">
+                <span>Repeatability — arrival battery</span>
+                <span className="font-medium text-foreground">
+                  {Math.round(scenarios.worst.arrival_soc_pct)}–{Math.round(scenarios.best.arrival_soc_pct)}%
+                  <span className="text-muted-foreground"> (expected {Math.round(scenarios.expected.arrival_soc_pct)}%)</span>
+                </span>
+              </div>
+              <div className="relative h-2 overflow-hidden rounded-full bg-surface-raised">
+                <div
+                  className="absolute inset-y-0 rounded-full bg-primary/50"
+                  style={{
+                    left: `${scalePct(scenarios.worst.arrival_soc_pct)}%`,
+                    width: `${Math.max(2, scalePct(scenarios.best.arrival_soc_pct) - scalePct(scenarios.worst.arrival_soc_pct))}%`,
+                  }}
+                />
+                <div
+                  className="absolute inset-y-0 w-[3px] rounded-full bg-foreground"
+                  style={{ left: `${scalePct(scenarios.expected.arrival_soc_pct)}%` }}
+                />
+              </div>
             </div>
           )}
 
