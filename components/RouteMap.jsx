@@ -53,7 +53,12 @@ export default function RouteMap({
   const initialCenter = center || positions?.[0] || chargerPositions[0] || [22.5, 78.9]; // default: India
 
   return (
-    <div style={{ position: 'relative', height: '100%', width: '100%' }}>
+    // isolation:isolate contains Leaflet's internal z-index (its zoom control sits at
+    // z-index 1000, tile panes at 400+) to THIS box's own stacking context — otherwise
+    // those values compare against the whole document's stacking order and paint over
+    // higher app UI like the mobile trip-inputs Sheet (z-50), whose Portal renders
+    // straight onto <body>.
+    <div style={{ position: 'relative', height: '100%', width: '100%', isolation: 'isolate' }}>
       {hasRoute ? (
         <div className="absolute right-3 top-3 z-[500] rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground shadow-lg">
           Recommended route · {Math.round(distanceKm)} km

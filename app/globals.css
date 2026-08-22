@@ -1,25 +1,25 @@
 @import 'tailwindcss';
 
-/* Cockpit theme tokens — matches the Tata deck: deep navy background, electric-blue
-   primary, lime-green success, amber warning, red danger. Tailwind v4 turns each
-   --color-* var below into a utility (bg-background, text-primary, border-border, etc). */
+/* Cream + blue theme: warm cream background, white cards, navy text, blue primary.
+   Tailwind v4 turns each --color-* var below into a utility (bg-background,
+   text-primary, border-border, etc). */
 @theme {
-  --color-background: #0a0f1e;
-  --color-background-alt: #0b1220;
-  --color-surface: #111a2e;
-  --color-surface-raised: #16213a;
-  --color-foreground: #f4f6fb;
-  --color-muted-foreground: #8b96b3;
-  --color-border: #223054;
+  --color-background: #faf6ec;
+  --color-background-alt: #f2e9d4;
+  --color-surface: #ffffff;
+  --color-surface-raised: #f6f1e3;
+  --color-foreground: #1e2a3a;
+  --color-muted-foreground: #6b7280;
+  --color-border: #e7dfc7;
 
-  --color-primary: #1ea7ff;
-  --color-primary-foreground: #04101f;
-  --color-success: #8be04a;
-  --color-success-foreground: #0c1a03;
-  --color-warning: #f5a623;
-  --color-warning-foreground: #1f1300;
-  --color-danger: #ef4444;
-  --color-danger-foreground: #200404;
+  --color-primary: #2563eb;
+  --color-primary-foreground: #ffffff;
+  --color-success: #16a34a;
+  --color-success-foreground: #f0fdf4;
+  --color-warning: #d97706;
+  --color-warning-foreground: #451a03;
+  --color-danger: #dc2626;
+  --color-danger-foreground: #fef2f2;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
 
@@ -43,14 +43,14 @@ body {
   background: var(--color-background);
 }
 
-/* Leaflet's own CSS ships light-mode tile borders/attribution — restyle the pieces
-   that would otherwise look like an unstyled rectangle dropped into the cockpit theme. */
+/* Leaflet's own CSS ships some hardcoded chrome — restyle the pieces that would
+   otherwise look like an unstyled rectangle dropped into the cream/blue theme. */
 .leaflet-container {
   background: var(--color-surface);
   font-family: var(--font-sans);
 }
 .leaflet-control-attribution {
-  background: rgba(10, 15, 30, 0.75) !important;
+  background: rgba(255, 255, 255, 0.85) !important;
   color: var(--color-muted-foreground) !important;
 }
 .leaflet-control-attribution a {
