@@ -6,6 +6,7 @@ import { DEFAULT_TARIFF, VEHICLES } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments, findSteepestClimb } from '@/lib/segments';
 import { assessConfidence, STANDIN_WORST_CASE_PENALTY } from '@/lib/governance';
+import { calibrate, explainCalibration, CALIBRATION_TRAINED_ON } from '@/lib/calibration';
 import { useSettings } from '@/lib/settingsContext';
 import { useTripHistory } from '@/lib/tripHistoryContext';
 import { Button } from '@/components/ui/button';
@@ -18,6 +19,8 @@ import VerdictCard from './VerdictCard';
 import ResultsPanel from './ResultsPanel';
 import GuidancePanel from './GuidancePanel';
 import AssumptionsPopover from './AssumptionsPopover';
+import AiModelPanel from './AiModelPanel';
+import AskBox from './AskBox';
 
 const RouteMap = dynamic(() => import('./RouteMap'), { ssr: false });
 
@@ -110,14 +113,14 @@ export default function DriverView() {
       params: vehicle,
     });
 
-    console.log(`[EnergyModel] ${originVal} -> ${destinationVal}: kWh/km = ${r.kWh_per_km.toFixed(3)}`);
+    console.log(`[EnergyModel] ${originVal} -> ${destinationVal}: physics kWh/km = ${r.kWh_per_km.toFixed(3)}`);
     const isHeroPreset =
       originVal.trim().toLowerCase() === HERO_PRESET.origin.toLowerCase() &&
       destinationVal.trim().toLowerCase() === HERO_PRESET.destination.toLowerCase();
     if (isHeroPreset) {
       const drift = Math.abs(r.kWh_per_km - CALIBRATION_TARGET_KWH_PER_KM);
       console.log(
-        `[Calibration] Mumbai->Pune target ${CALIBRATION_TARGET_KWH_PER_KM} kWh/km, got ${r.kWh_per_km.toFixed(
+        `[Calibration target] Mumbai->Pune physics target ${CALIBRATION_TARGET_KWH_PER_KM} kWh/km, got ${r.kWh_per_km.toFixed(
           3
         )} (drift ${drift.toFixed(3)}).` +
           (drift > CALIBRATION_TOLERANCE
@@ -126,9 +129,45 @@ export default function DriverView() {
       );
     }
 
+    // Learned calibration (P1-1): a small correction on top of the physics estimate,
+    // fit on synthetic trip history (lib/calibration.js). The calibrated number — not
+    // the raw physics one — drives the verdict/range/arrival-SOC math from here on.
+    const avg_gradient =
+      r.dist_km > 0 ? r.perSeg.reduce((a, s) => a + s.grade_pct * s.distance_m, 0) / (r.dist_km * 1000) : 0;
+    const avg_speed_kmh =
+      routeData.duration_s > 0 ? (routeData.distance_m / routeData.duration_s) * 3.6 : 50;
+    const sampleTemps = samples.map((s) => s.temp_c).filter((t) => Number.isFinite(t));
+    const temp_c = sampleTemps.length ? sampleTemps.reduce((a, t) => a + t, 0) / sampleTemps.length : 27;
+
+    const calibrationFeatures = { distance_km: r.dist_km, avg_gradient, payload_kg: payloadKg, temp_c, avg_speed_kmh };
+    const calibration_factor = calibrate(calibrationFeatures);
+    const physics_kWh_per_km = r.kWh_per_km;
+    const kWh_per_km = physics_kWh_per_km * calibration_factor;
+    const total_kWh = kWh_per_km * r.dist_km;
+    const battery_kWh = vehicle.battery_kWh > 0 ? vehicle.battery_kWh : 1;
+    const predicted_full_range_km = kWh_per_km > 0 ? battery_kWh / kWh_per_km : Infinity;
+    const arrival_soc_pct = ((battery_kWh * (batteryPct / 100) - total_kWh) / battery_kWh) * 100;
+
+    console.log(
+      `[Calibration] factor ${calibration_factor.toFixed(3)}: physics ${physics_kWh_per_km.toFixed(
+        3
+      )} -> calibrated ${kWh_per_km.toFixed(3)} kWh/km`
+    );
+
     return {
       ...r,
       ...climb,
+      physics_kWh_per_km,
+      kWh_per_km,
+      total_kWh,
+      predicted_full_range_km,
+      arrival_soc_pct,
+      cost_per_km: kWh_per_km * tariffVal,
+      feasible: arrival_soc_pct >= vehicle.reserve_pct,
+      calibration_factor,
+      calibration_features: calibrationFeatures,
+      calibration_note: explainCalibration(calibrationFeatures),
+      calibration_trained_on: CALIBRATION_TRAINED_ON,
     };
   };
 
@@ -555,8 +594,24 @@ export default function DriverView() {
               <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
                 Your trip plan
               </h3>
+              {result.physics_kWh_per_km != null && (
+                <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+                  <div className="text-sm text-foreground">
+                    Physics estimate <span className="font-mono">{result.physics_kWh_per_km.toFixed(2)}</span> kWh/km
+                    {' → '}
+                    Calibrated <span className="font-mono font-semibold text-primary">{result.kWh_per_km.toFixed(2)}</span> kWh/km
+                    {' '}
+                    <span className="text-muted-foreground">(learned from {result.calibration_trained_on?.toLocaleString()} trips)</span>
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">{result.calibration_note}</div>
+                </div>
+              )}
               <GuidancePanel result={result} chargingNeed={chargingNeed} weather={primaryWeather} />
-              <AssumptionsPopover />
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                <AssumptionsPopover />
+                <AiModelPanel />
+              </div>
+              <AskBox result={result} />
             </Card>
           )}
         </div>
