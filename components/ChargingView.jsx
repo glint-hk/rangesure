@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { Loader2 } from 'lucide-react';
 import { Card } from '@/components/ui/card';
+import PlaceAutocomplete from './PlaceAutocomplete';
 
 const RouteMap = dynamic(() => import('./RouteMap'), { ssr: false });
 
@@ -77,24 +78,21 @@ export default function ChargingView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [place]);
 
-  const handleKeyDown = (e) => {
-    if (e.key !== 'Enter') return;
-    const query = place.trim();
-    if (query.length < MIN_QUERY_LENGTH) return;
-    clearTimeout(debounceRef.current);
-    runSearch(query); // search immediately, skip the debounce wait
-  };
-
   return (
     <div className="mx-auto max-w-5xl">
       <h2 className="mb-4 text-lg font-bold text-foreground">Charging network</h2>
       <div className="relative mb-4">
-        <input
-          className="h-11 w-full rounded-xl border border-border bg-surface-raised px-3.5 pr-10 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+        <PlaceAutocomplete
           value={place}
-          onChange={(e) => setPlace(e.target.value)}
-          onKeyDown={handleKeyDown}
+          onChange={setPlace}
+          onEnter={() => {
+            const query = place.trim();
+            if (query.length < MIN_QUERY_LENGTH) return;
+            clearTimeout(debounceRef.current);
+            runSearch(query);
+          }}
           placeholder="Type a city, e.g. Pune"
+          inputClassName="h-11 w-full rounded-xl border border-border bg-surface-raised px-3.5 pr-10 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
         />
         {loading && (
           <Loader2

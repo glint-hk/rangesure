@@ -15,6 +15,7 @@ import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
+import PlaceAutocomplete from './PlaceAutocomplete';
 import VerdictCard from './VerdictCard';
 import ResultsPanel from './ResultsPanel';
 import GuidancePanel from './GuidancePanel';
@@ -491,23 +492,23 @@ export default function DriverView() {
           </SelectContent>
         </Select>
       </div>
-      <div className="grid grid-cols-2 gap-3">
+      <div className="flex flex-col gap-3">
         <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
           Origin
-          <input
-            className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+          <PlaceAutocomplete
             value={origin}
-            onChange={(e) => setOrigin(e.target.value)}
+            onChange={setOrigin}
             placeholder="e.g. Mumbai"
+            inputClassName="h-11 w-full rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
           />
         </label>
         <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
           Destination
-          <input
-            className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+          <PlaceAutocomplete
             value={destination}
-            onChange={(e) => setDestination(e.target.value)}
+            onChange={setDestination}
             placeholder="e.g. Pune"
+            inputClassName="h-11 w-full rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
           />
         </label>
       </div>
