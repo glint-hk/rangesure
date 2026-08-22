@@ -2,8 +2,10 @@
 
 MBA AI-transformation capstone demo. Judged on: problem-solution fit, a genuine AI capability,
 live deployment, and usability by a NON-technical person. The authoritative specs are
-`../DTAI_RangeSure_Build_Prompts.md` (original build) and `../DTAI_RangeSure_Perfect_App_Upgrade.md`
-(the P0/P1 upgrade pack this codebase now implements in full) — both in the repo root's parent.
+`../DTAI_RangeSure_Build_Prompts.md` (original build), `../DTAI_RangeSure_Perfect_App_Upgrade.md`
+(the P0/P1 upgrade pack), and `../DTAI_RangeSure_Route_Guarantee.md` (the G1-G5 commercial
+"Route Guarantee" layer) — this codebase now implements all three in full, all in the repo
+root's parent.
 
 **Recalibration note:** live verification found the deck's original Mumbai→Pune numbers (148 km,
 0.82 kWh/km, expressway) don't match reality — ORS's `driving-hgv` profile routes via the old
@@ -15,14 +17,15 @@ the real ones instead (slide 9 update pending). See the CALIBRATION comment in `
 
 ## Stack
 - Next.js App Router, JavaScript (NOT TypeScript). Deployed on Vercel.
-- Styling: Tailwind CSS v4 (`app/globals.css` — `@theme` block defines the dark "cockpit" design
-  tokens: `background`/`background-alt`/`surface`/`surface-raised`, `foreground`/
-  `muted-foreground`, `border`, `primary` electric-blue, `success` lime, `warning` amber,
-  `danger` red) + hand-built shadcn/ui-pattern primitives in `components/ui/` (button, card,
-  badge, tabs, sheet, select, skeleton, tooltip — Radix primitives + `class-variance-authority`
-  + `lib/utils.js`'s `cn()`), matching what the shadcn CLI would generate so 21st.dev component
-  variants can drop in later without a refactor. No plain custom CSS classes remain except
-  RouteMap's Leaflet container overrides in globals.css.
+- Styling: Tailwind CSS v4 (`app/globals.css` — `@theme` block defines a cream/blue design
+  system: `background`/`background-alt` cream, `surface`/`surface-raised` off-white,
+  `foreground`/`muted-foreground` navy-grey text, `border` warm cream-grey, `primary` blue
+  (`#2563eb`), `success` green, `warning` amber, `danger` red) + hand-built shadcn/ui-pattern
+  primitives in `components/ui/` (button, card, badge, tabs, sheet, select, skeleton, tooltip,
+  slider — Radix primitives + `class-variance-authority` + `lib/utils.js`'s `cn()`), matching
+  what the shadcn CLI would generate so 21st.dev component variants can drop in later without a
+  refactor. Charts (the Guarantee view's moat curve) use `recharts`. No plain custom CSS classes
+  remain except RouteMap's Leaflet container overrides in globals.css.
 - Map: react-leaflet + OpenStreetMap tiles. Leaflet touches `window`, so RouteMap.jsx
   MUST be dynamically imported with { ssr: false } and only rendered on the client.
 - ALL external APIs are called from server route handlers in app/api/* — never from the browser:
@@ -36,20 +39,25 @@ the real ones instead (slide 9 update pending). See the CALIBRATION comment in `
 - Env vars are SERVER-ONLY (no NEXT_PUBLIC_ prefix): ORS_KEY, OCM_KEY, GEMINI_API_KEY.
 - The energy model (lib/energyModel.js) is PURE (no fetch) and runs client-side, as are
   lib/segments.js, lib/scenarios.js, lib/calibration.js, and lib/governance.js.
-- Two client-side Context providers, wrapping the whole app in app/page.js, both
-  localStorage-backed (per-browser only, no backend):
-  - `lib/settingsContext.jsx` — vehicle params, default tariff, and DC charger power (kW),
-    editable on Settings, consumed live by Plan Trip, Fleet, and AssumptionsPopover instead
-    of the static config.js import. config.js remains the factory-default source (and
-    Settings' "Reset to defaults" target). `selectVehicle(name)` swaps in a whole VEHICLES
-    preset; `updateVehicle(patch)` nudges the currently-selected preset's params in place.
-  - `lib/tripHistoryContext.jsx` — log of trips run on Plan Trip (capped at 50), feeds
-    the Trips and Reports pages. Fleet runs are NOT logged here (Fleet is its own
-    snapshot view, not a dispatch log).
+- Three client-side Context providers, wrapping the whole app in app/page.js:
+  - `lib/settingsContext.jsx` (localStorage-backed) — vehicle params, default tariff, DC
+    charger power (kW), and the Route Guarantee model's `margin`/`disruptionCostPerKm`
+    assumptions, editable on Settings, consumed live by Plan Trip, Fleet, Guarantee, and
+    AssumptionsPopover instead of the static config.js import. config.js remains the
+    factory-default source (and Settings' "Reset to defaults" target). `selectVehicle(name)`
+    swaps in a whole VEHICLES preset; `updateVehicle(patch)` nudges the currently-selected
+    preset's params in place.
+  - `lib/tripHistoryContext.jsx` (localStorage-backed) — log of trips run on Plan Trip
+    (capped at 50), feeds the Trips and Reports pages. Fleet runs are NOT logged here
+    (Fleet is its own snapshot view, not a dispatch log).
+  - `lib/lastTripContext.jsx` (session-only, not persisted) — the most recently computed
+    Plan Trip result (origin/destination, dist_km, tariff, vehicle name, calibrated
+    best/expected/worst kWh/km), consumed by the Guarantee view so it can price a
+    commitment from a trip that's already been computed, not run its own calculation.
 
 ## The app
-Left sidebar (desktop) / bottom tab bar (mobile, <1024px), all six items functional: Plan Trip,
-Trips, Fleet, Charging, Reports, Settings.
+Left sidebar (desktop) / bottom tab bar (mobile, <1024px), all seven items functional: Plan
+Trip, Guarantee, Trips, Fleet, Charging, Reports, Settings.
 
 1. **Plan Trip (Driver view)** — one trip. Inputs: vehicle preset (VEHICLES dropdown), origin,
    destination, payload (kg, clamped to the selected vehicle's max), battery %, tariff (₹/kWh,
@@ -72,22 +80,29 @@ Trips, Fleet, Charging, Reports, Settings.
    popover, and an Ask box for natural-language what-ifs. Never show a bare "±12%" — confidence
    is always the 85–91% range (widened when the governance fallback is active — see below).
    Every successful calculation is logged to trip history via `useTripHistory().addTrip()`
-   (using the CALIBRATED numbers, not raw physics).
-2. **Trips** — table of trip history (most recent first), "Clear history" button, empty
+   (using the CALIBRATED numbers, not raw physics), and pushed to `lib/lastTripContext.jsx`
+   for the Guarantee view. When the selected vehicle is flagged by the cohort-anomaly check
+   (see below), a `CohortAnomalyBanner` renders above the VerdictCard.
+2. **Guarantee** — the commercial hero screen (see Route Guarantee section below). Reuses the
+   last Plan Trip calculation's numbers via `lib/lastTripContext.jsx`; shows an empty state
+   ("compute a trip on Plan Trip first") if nothing has been run yet.
+3. **Trips** — table of trip history (most recent first), "Clear history" button, empty
    state if none logged yet.
-3. **Fleet view** — a dashboard strip (total kWh, avg ₹/km, trips needing a charge stop) + an
-   insight line when any route is MARGINAL, + a sortable table of 6 sample trucks/trips.
-   Each row stores its route segments so a per-row vehicle Select recomputes feasibility live,
+4. **Fleet view** — a dashboard strip (total kWh, avg ₹/km, trips needing a charge stop) + an
+   insight line when any route is MARGINAL, + a "Guarantee book" roll-up strip (see Route
+   Guarantee section), + a sortable table of 6 sample trucks/trips. Each row stores its route
+   segments so a per-row vehicle Select recomputes feasibility (and its guarantee price) live,
    with no refetch. Status is three-tier: Feasible (green) / Marginal (amber, arrival within 5
    points of the reserve buffer) / Infeasible (red). A header-level vehicle Select sets the
    default for all rows on the next "Run fleet".
-4. **Charging** — search a city (geocoded via app/api/geocode), shows nearby charging
+5. **Charging** — search a city (geocoded via app/api/geocode), shows nearby charging
    stations (~50 km) on a map plus a list. Reuses RouteMap.jsx in its chargers-only mode
    (no route line).
-5. **Reports** — aggregate stats (total distance/energy/cost, feasibility rate) computed
+6. **Reports** — aggregate stats (total distance/energy/cost, feasibility rate) computed
    from trip history. Empty state if none logged yet.
-6. **Settings** — edit every vehicle param, the default tariff, and the DC fast-charge power
-   (kW); changes apply immediately to Plan Trip and Fleet and persist to localStorage.
+7. **Settings** — edit every vehicle param, the default tariff, the DC fast-charge power
+   (kW), and the Route Guarantee model's margin/disruption-cost assumptions; changes apply
+   immediately to Plan Trip, Fleet, and Guarantee, and persist to localStorage.
    "Reset to defaults" restores the config.js Ultra E.9 preset.
 
 ## Vehicle presets (config.js)
@@ -156,6 +171,50 @@ confidence band, a "Safe fallback active" badge, and the raw numbers still shown
 hidden. Every calculation logs `[Governance] { inputs, model_version, confidence, verdict,
 fallback_active, reasons }` to the console as a stand-in trip log.
 
+## Route Guarantee (lib/guarantee.js, data/corridors.js) — the commercial layer
+Turns the trip engine's confidence band into a priced commitment: "Tata can commit ₹X/km on
+this corridor with a Y% completion guarantee." `lib/guarantee.js`'s `priceGuarantee()` is an
+explicitly **illustrative, non-actuarial** model (implemented verbatim from
+`../DTAI_RangeSure_Route_Guarantee.md`): the best/worst scenario band sizes an uncertainty
+`sigma0`, scaled by `sqrt(baseline_trips / corridor_trips)` — MORE corridor trips means LESS
+uncertainty (the "data flywheel"). An Acklam inverse-normal quantile turns the guarantee % into
+a z-score priced against that sigma; a residual disruption load and Tata's margin stack on top.
+`underwritable` is false when a corridor has under 100 logged trips or the buffer would exceed
+3x the expected cost — the Guarantee view shows an honest "not yet underwritable" state instead
+of a price in that case, never a fabricated number. `data/corridors.js` is a synthetic,
+bidirectional, first-place-name-normalized lookup of per-corridor trip counts (a few named
+corridors seeded, default 300 for unknown ones) standing in for real Fleet Edge corridor
+history. `estimateTripsToUnderwrite()` binary-searches how many more corridor trips a thin
+corridor would need to flip underwritable, used by the Fleet Guarantee book's insight line.
+
+**Guarantee view** (`components/GuaranteeView.jsx`) reuses the last Plan Trip result via
+`lib/lastTripContext.jsx` — it does not run its own trip calculation. Hero card shows the
+committed ₹/km and guarantee % badge; a 90–99.5% `Slider` live-recomputes the price; a
+breakdown bar (Energy cost | Risk buffer | Margin) sums EXACTLY to the committed price (the
+`risk_cost_per_km`/`disruption_load_per_km`/`margin_per_km` fields on `priceGuarantee()`'s
+return value are additive by construction, so this always reconciles). `components/MoatPanel.jsx`
+sweeps `corridor_trips = [0, 100, 500, 1500, 10000, 50000]` at the SAME trip/guarantee level and
+plots the buffer collapsing as trip history grows (recharts line chart) — the visual argument
+for why a new entrant (0 trips) literally cannot underwrite.
+
+**Fleet Guarantee book** (in `FleetView.jsx`): each fleet row now also runs
+`runScenarios()` (not just a single physics estimate) so it has a best/worst band to price, at
+a fixed `HOUSE_GUARANTEE_PCT` (96%). Rolls up into: annualized guaranteed contract value
+(underwritable corridors only, using an illustrative `annualTrips` dispatch-frequency
+assumption per row — NOT a routing input), a km-weighted average risk buffer, and an
+underwritable/not-yet count with a named insight line.
+
+## Cohort anomaly flag (data/cohort.js) — G4
+A pre-trip signal only fleet-wide data could enable: `getCohortAnomaly()` treats a vehicle
+model's own calibrated kWh/km as its cohort mean (what a healthy truck of that model draws),
+with a small synthetic std spread across the fleet, and compares one deterministic synthetic
+"unit" offset (standing in for a specific VIN's own Fleet Edge history) against it as a
+z-score. Trucks above ~1.5σ are flagged amber via `components/CohortAnomalyBanner.jsx` on
+both Plan Trip and Guarantee ("this truck is drawing ~X% above its cohort — possible battery
+degradation"). Offsets are hardcoded per vehicle model in `data/cohort.js` (Ultra E.9 is
+seeded to flag, by design, since it's the default Plan Trip vehicle) — synthetic demo data,
+labeled as such in the UI, not a real degradation model.
+
 ## Charge time + delivery window (P1-3, in DriverView)
 For needs-charge trips: `kWh_needed` closes the gap from arrival SOC up to the reserve buffer;
 `charge_minutes = kWh_needed / chargerKW * 60` using Settings' DC fast-charge power (default
@@ -180,6 +239,10 @@ the UI must never white-screen or invent a number waiting on Gemini.
 - Every API route handles errors and returns a clean JSON error; the UI never white-screens.
 - The LLM layers (guidance, ask) may explain/reason over model numbers but must never invent
   or silently override one.
+- The Route Guarantee is explicitly labeled an "illustrative underwriting model" — not
+  actuarial — everywhere it's shown, and its assumptions (margin, disruption cost, baseline
+  trips, corridor trip counts) are visible/editable, never hidden. When `priceGuarantee()`
+  says a corridor isn't underwritable, show that honestly — never a fabricated price.
 
 ## Coding conventions
 - Small components, clear names. No secrets in any client component or NEXT_PUBLIC_ var.
