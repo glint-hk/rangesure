@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { SlidersHorizontal, Loader2, AlertCircle, Info } from 'lucide-react';
+import { Loader2, AlertCircle, Info } from 'lucide-react';
 import { DEFAULT_TARIFF, VEHICLES } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments, findSteepestClimb } from '@/lib/segments';
@@ -13,7 +13,6 @@ import { useTripHistory } from '@/lib/tripHistoryContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Sheet, SheetTrigger, SheetContent } from '@/components/ui/sheet';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import VerdictCard from './VerdictCard';
@@ -109,7 +108,6 @@ export default function DriverView() {
   const [weatherWarning, setWeatherWarning] = useState(false);
   const [chargingWarning, setChargingWarning] = useState(false);
   const [elevationMissing, setElevationMissing] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
 
   // SettingsProvider loads its saved tariff from localStorage in an effect, which runs
   // AFTER this component's first render — so the useState above can seed from the stale
@@ -212,7 +210,6 @@ export default function DriverView() {
     setWeatherWarning(false);
     setChargingWarning(false);
     setElevationMissing(false);
-    setSheetOpen(false);
 
     try {
       const routeRes = await fetch('/api/route', {
@@ -594,26 +591,9 @@ export default function DriverView() {
 
   return (
     <div className="mx-auto max-w-7xl">
-      {/* Mobile: collapsible inputs sheet */}
-      <div className="mb-4 lg:hidden">
-        <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-          <SheetTrigger asChild>
-            <Button variant="secondary" className="w-full justify-between" type="button">
-              <span className="flex items-center gap-2">
-                <SlidersHorizontal className="h-4 w-4" aria-hidden="true" />
-                {origin && destination ? `${origin} → ${destination}` : 'Plan a trip'}
-              </span>
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="bottom" title="Trip details">
-            {inputsForm}
-          </SheetContent>
-        </Sheet>
-      </div>
-
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1.5fr_1fr] lg:items-start">
-        {/* Desktop: inline inputs pane */}
-        <Card className="hidden p-5 lg:block">{inputsForm}</Card>
+        {/* Trip inputs — always visible inline, on mobile and desktop alike. */}
+        <Card className="p-5">{inputsForm}</Card>
 
         {/* Mobile order: verdict, metrics, map, guidance. Desktop: map is the center pane. */}
         <div className="order-2 h-[320px] overflow-hidden rounded-2xl border border-border lg:order-none lg:h-[560px]">
