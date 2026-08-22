@@ -26,7 +26,7 @@ function clamp(value, field) {
 }
 
 export default function SettingsView() {
-  const { vehicle, tariff, setTariff, updateVehicle, resetDefaults } = useSettings();
+  const { vehicle, tariff, setTariff, chargerKW, setChargerKW, updateVehicle, resetDefaults } = useSettings();
   const [saved, setSaved] = useState(false);
 
   useEffect(() => {
@@ -93,6 +93,24 @@ export default function SettingsView() {
             }}
             onBlur={() => {
               setTariff((t) => Math.max(0, Number.isNaN(t) ? 0 : t));
+              setSaved(true);
+            }}
+            className={inputClass}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5 rounded-xl border border-border bg-surface-raised p-3 text-xs text-muted-foreground">
+          DC fast-charge power (kW)
+          <input
+            type="number"
+            step={10}
+            min={1}
+            value={chargerKW}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              if (!Number.isNaN(n)) setChargerKW(n);
+            }}
+            onBlur={() => {
+              setChargerKW((k) => Math.max(1, Number.isNaN(k) ? 1 : k));
               setSaved(true);
             }}
             className={inputClass}

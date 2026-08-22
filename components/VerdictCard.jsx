@@ -54,6 +54,8 @@ export default function VerdictCard({
   reasons = [],
   fallbackActive = false,
   scenarios,
+  chargeInfo,
+  chargerTitle,
   why,
   children,
 }) {
@@ -109,6 +111,19 @@ export default function VerdictCard({
                   style={{ left: `${scalePct(scenarios.expected.arrival_soc_pct)}%` }}
                 />
               </div>
+            </div>
+          )}
+
+          {chargeInfo?.charge_minutes != null && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-foreground">
+              <span>
+                Add ~{chargeInfo.charge_minutes} min at {chargerTitle || 'a nearby charger'}
+              </span>
+              {chargeInfo.windowVerdict && (
+                <Badge variant={chargeInfo.windowVerdict.onTime ? 'success' : 'danger'}>
+                  {chargeInfo.windowVerdict.label}
+                </Badge>
+              )}
             </div>
           )}
 

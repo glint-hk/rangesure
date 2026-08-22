@@ -87,7 +87,7 @@ function deriveFromKwhPerKm(kWh_per_km, dist_km, batteryPct, tariffVal, vehicleP
 }
 
 export default function DriverView() {
-  const { vehicle, tariff: settingsTariff, selectVehicle } = useSettings();
+  const { vehicle, tariff: settingsTariff, selectVehicle, chargerKW } = useSettings();
   const { addTrip } = useTripHistory();
 
   const [origin, setOrigin] = useState('');
@@ -95,6 +95,7 @@ export default function DriverView() {
   const [payload, setPayload] = useState(HERO_PRESET.payload);
   const [battery, setBattery] = useState(HERO_PRESET.battery);
   const [tariff, setTariff] = useState(settingsTariff);
+  const [deliveryWindow, setDeliveryWindow] = useState(''); // optional, hours
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -380,6 +381,29 @@ export default function DriverView() {
 
   const isFallback = governance ? governance.degraded || governance.uncertain : false;
 
+  // Charge time + delivery-window impact (P1-3): only meaningful for needs-charge
+  // trips. kWh_needed closes the gap from the (negative/below-reserve) arrival SOC up
+  // to the reserve buffer — a simplified single-stop model, consistent with the rest
+  // of the app's "first charger found" approach.
+  const chargeInfo = useMemo(() => {
+    if (!result || result.feasible || !route) return null;
+    const kWh_needed = Math.max(0, ((vehicle.reserve_pct - result.arrival_soc_pct) / 100) * vehicle.battery_kWh);
+    const charge_minutes = chargerKW > 0 ? Math.ceil((kWh_needed / chargerKW) * 60) : null;
+
+    let windowVerdict = null;
+    const windowHours = Number(deliveryWindow);
+    if (deliveryWindow !== '' && Number.isFinite(windowHours) && windowHours > 0 && charge_minutes != null) {
+      const routeHours = route.duration_s / 3600;
+      const totalHours = routeHours + charge_minutes / 60;
+      const slackMinutes = Math.round((windowHours - totalHours) * 60);
+      windowVerdict =
+        slackMinutes >= 0
+          ? { onTime: true, label: 'On time' }
+          : { onTime: false, label: `Risks delivery window by ~${Math.abs(slackMinutes)} min` };
+    }
+    return { kWh_needed, charge_minutes, windowVerdict };
+  }, [result, route, chargerKW, vehicle.reserve_pct, vehicle.battery_kWh, deliveryWindow]);
+
   // Stand-in trip log: every calculation logs its inputs, model version, confidence,
   // and whether the governance red-line kicked in — the demo highlight for P0-4.
   useEffect(() => {
@@ -426,6 +450,8 @@ export default function DriverView() {
           confidenceLow: result.confidence_low,
           confidenceHigh: result.confidence_high,
           scenarios: result.scenarios,
+          chargeInfo: !result.feasible ? chargeInfo : null,
+          chargerTitle: recommendedStop?.title,
         }
     : null;
 
@@ -521,6 +547,18 @@ export default function DriverView() {
           />
         </label>
       </div>
+      <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+        Delivery window (hours, optional)
+        <input
+          type="number"
+          step="0.5"
+          min="0"
+          placeholder="e.g. 6"
+          className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+          value={deliveryWindow}
+          onChange={(e) => setDeliveryWindow(e.target.value)}
+        />
+      </label>
       <Button
         size="lg"
         onClick={() => handleCalculate()}
