@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Loader2, AlertCircle, Info } from 'lucide-react';
+import { Loader2, AlertCircle, Info, MapPinned, Gauge, ShieldCheck } from 'lucide-react';
 import { DEFAULT_TARIFF, VEHICLES } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments, findSteepestClimb } from '@/lib/segments';
@@ -41,7 +41,7 @@ const HERO_PRESET = {
 };
 
 // A longer, lower-battery trip that should trip the charging-stop path in the demo.
-// Payload must never exceed the demo-default Ultra E.9's payload_max_kg (4,000).
+// Payload must never exceed the demo-default e-ICV 11T's payload_max_kg (4,000).
 const NASHIK_PRESET = {
   label: 'Nashik run (needs charge)',
   origin: 'Mumbai',
@@ -586,7 +586,7 @@ export default function DriverView() {
                 </button>
               </TooltipTrigger>
               <TooltipContent>
-                Tata Motors CV, Auto Expo 2025 / 2026 delivery releases (estimated physics params).
+                Representative published specs for Indian e-trucks in each GVW class (battery, GVW, payload, range); physics params are engineering estimates.
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -744,6 +744,18 @@ export default function DriverView() {
 
   return (
     <div className="mx-auto max-w-7xl">
+      <header className="mb-5 flex flex-col gap-1">
+        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
+          Dyaus RangeSure · AI trip intelligence for electric trucks
+        </div>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">
+          Will this e-truck make the trip, and what will each km cost?
+        </h1>
+        <p className="max-w-3xl text-sm text-muted-foreground">
+          Live route, terrain and weather, a physics model calibrated on past trips, and an honest confidence
+          band. Then turn the answer into a guaranteed price per km.
+        </p>
+      </header>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1.5fr_1fr] lg:items-start">
         {/* Trip inputs — always visible inline, on mobile and desktop alike. Desktop also
             gets the Trip Plan panel directly beneath it, filling what used to be empty
@@ -765,9 +777,31 @@ export default function DriverView() {
 
         <div className="order-1 flex flex-col gap-4 lg:order-none">
           {!result && !loading && (
-            <Card className="flex items-center gap-2 border-dashed p-5 text-sm text-muted-foreground">
-              Pick a preset above, or enter a trip and hit "Optimise Trip" to see the route, energy
-              use, and driver guidance.
+            <Card className="p-5">
+              <h2 className="text-sm font-semibold text-foreground">How it works</h2>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Tap <span className="font-medium text-foreground">Mumbai → Pune</span> for a one-click demo, or
+                enter your own trip.
+              </p>
+              <ol className="mt-4 space-y-3">
+                {[
+                  { icon: MapPinned, title: 'Plan the route', text: 'Real road, elevation and live weather along the way.' },
+                  { icon: Gauge, title: 'Get an honest verdict', text: 'Energy per km, arrival battery, charge stops and a confidence band.' },
+                  { icon: ShieldCheck, title: 'Price a guarantee', text: 'Open Guarantee to turn the result into a committed ₹/km.' },
+                ].map(({ icon: Icon, title, text }, i) => (
+                  <li key={title} className="flex gap-3">
+                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                      <Icon className="h-4 w-4" aria-hidden="true" />
+                    </span>
+                    <div>
+                      <div className="text-sm font-medium text-foreground">
+                        {i + 1}. {title}
+                      </div>
+                      <div className="text-xs text-muted-foreground">{text}</div>
+                    </div>
+                  </li>
+                ))}
+              </ol>
             </Card>
           )}
           {loading && !result && (

@@ -1,4 +1,8 @@
-# Project: Tata RangeSure — EV Truck Range Optimizer
+# Project: Dyaus RangeSure — EV Truck Range Optimizer
+
+Branded for Dyaus Advisory (client-facing: "Created by Hrishikesh Kumar for Dyaus Advisory" credit in the
+sidebar, mobile header, and `components/AppFooter.jsx`; logo mark in `components/BrandMark.jsx`). All Tata
+branding was removed: vehicle presets use generic GVW-class names and "Fleet Edge" became "fleet telematics".
 
 MBA AI-transformation capstone demo. Judged on: problem-solution fit, a genuine AI capability,
 live deployment, and usability by a NON-technical person. The authoritative specs are
@@ -106,12 +110,12 @@ Trip, Guarantee, Trips, Fleet, Charging, Reports, Settings.
    "Reset to defaults" restores the config.js Ultra E.9 preset.
 
 ## Vehicle presets (config.js)
-`VEHICLES` is an array of 4 real Tata electric-truck presets (Ace EV, Ultra E.9, Prima E.28K,
-Prima E.55S) from the upgrade doc's spec table — `{ name, battery_kWh, gvw_kg, payload_max_kg,
+`VEHICLES` is an array of 4 generic Indian e-truck class presets (e-SCV 1.5T, e-ICV 11T, e-Rigid 28T,
+e-Tractor 55T — renamed from the original Tata models; settings storage key bumped to v4) from the upgrade doc's spec table — `{ name, battery_kWh, gvw_kg, payload_max_kg,
 claimed_range_km }` are real published specs; `{ Crr, Cd, A, eta_dt, eta_regen, P_aux }` are
 engineering estimates, commented as such (never hidden — shown via the Assumptions popover's
 specs-citation tooltip). `SHARED_PARAMS` (`rho`, `g`, `reserve_pct`) apply across all presets.
-`DEFAULT_VEHICLE` = Ultra E.9, matching board slide 9.
+`DEFAULT_VEHICLE` = e-ICV 11T, matching board slide 9.
 
 ## The energy model (lib/energyModel.js)
 Formulas: F_roll=Crr·m·g, F_aero=0.5·ρ·Cd·A·v_air², F_grade=m·g·sinθ (grade clamped ±30% —

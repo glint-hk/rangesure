@@ -12,8 +12,8 @@ import { fmtNum } from '@/lib/format';
 const TRIP_SWEEP = [0, 100, 500, 1500, 10000, 50000];
 const ANNOTATIONS = {
   0: 'New entrant (0 trips) — cannot underwrite',
-  1500: 'Tata today (~1,500)',
-  10000: 'Tata Year-2 (~10,000)',
+  1500: 'Incumbent today (~1,500)',
+  10000: 'Incumbent Year-2 (~10,000)',
 };
 
 function AnnotatedDot(props) {
@@ -56,7 +56,7 @@ export default function MoatPanel({
 
   return (
     <Card className="p-6">
-      <h4 className="mb-1 text-sm font-bold text-foreground">Why only Tata can price this</h4>
+      <h4 className="mb-1 text-sm font-bold text-foreground">Why only a data-rich operator can price this</h4>
       <p className="mb-4 text-xs text-muted-foreground">
         Illustrative underwriting model — same trip, same {fmtNum(guarantee_pct, 1)}% guarantee, plotted across
         how many corridor trips have been logged.
@@ -95,15 +95,15 @@ export default function MoatPanel({
           <span className="h-2 w-2 rounded-full bg-danger" /> New entrant (0 trips) — cannot underwrite
         </span>
         <span className="flex items-center gap-1.5 text-muted-foreground">
-          <span className="h-2 w-2 rounded-full bg-primary" /> Tata today (~1,500)
+          <span className="h-2 w-2 rounded-full bg-primary" /> Incumbent today (~1,500)
         </span>
         <span className="flex items-center gap-1.5 text-muted-foreground">
-          <span className="h-2 w-2 rounded-full bg-primary" /> Tata Year-2 (~10,000)
+          <span className="h-2 w-2 rounded-full bg-primary" /> Incumbent Year-2 (~10,000)
         </span>
       </div>
 
       <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-        Every completed trip on Fleet Edge tightens the guarantee and lowers the price — a moat that
+        Every completed trip logged on fleet telematics tightens the guarantee and lowers the price — a moat that
         compounds, and a new entrant starts at zero.
       </p>
     </Card>

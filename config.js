@@ -1,17 +1,18 @@
-// Real Tata electric-truck presets. Battery/GVW/payload/range come from Tata Motors CV
-// and Auto Expo 2025 / 2026 delivery-release specs (see the upgrade doc's spec table).
+// Generic Indian electric-truck class presets (e-SCV, e-ICV, rigid, tractor). Battery/GVW/
+// payload/range are representative of published specs for comparable Indian e-trucks in each
+// GVW class (see the upgrade doc's spec table).
 // Physics params (Crr, Cd, A, eta_dt, eta_regen, P_aux) are NOT published — they're
 // engineering estimates for a box truck / tractor of that class, scaled from the
 // original medium-e-truck baseline. Shown to the user via the Assumptions popover,
 // never hidden.
 //
-// CALIBRATION: for the demo-default Ultra E.9, Crr/Cd/P_aux/eta_regen are the knobs to
+// CALIBRATION: for the demo-default e-ICV 11T, Crr/Cd/P_aux/eta_regen are the knobs to
 // nudge if the live Mumbai->Pune reference trip (see HERO_PRESET in DriverView.jsx)
 // drifts from ~1.06 kWh/km — the real live baseline for ORS's driving-hgv route (165 km
 // via the old ghat road). Nudge one at a time and re-check the console.log output.
 export const VEHICLES = [
   {
-    name: 'Ace EV',
+    name: 'e-SCV 1.5T',
     battery_kWh: 24, // ~21-27 kWh published range, midpoint used
     gvw_kg: 1500,
     payload_max_kg: 750,
@@ -25,7 +26,7 @@ export const VEHICLES = [
     P_aux: 800, // W — engineering estimate
   },
   {
-    name: 'Ultra E.9',
+    name: 'e-ICV 11T',
     battery_kWh: 200, // ~200 kWh (est)
     gvw_kg: 11000,
     payload_max_kg: 4000,
@@ -39,7 +40,7 @@ export const VEHICLES = [
     P_aux: 3000, // CALIBRATION: baseline HVAC/aux load, W
   },
   {
-    name: 'Prima E.28K',
+    name: 'e-Rigid 28T',
     battery_kWh: 453,
     gvw_kg: 28000,
     payload_max_kg: 18000, // GVW minus an estimated ~10t empty mass — not separately published
@@ -53,7 +54,7 @@ export const VEHICLES = [
     P_aux: 3500, // W — engineering estimate
   },
   {
-    name: 'Prima E.55S',
+    name: 'e-Tractor 55T',
     battery_kWh: 450,
     gvw_kg: 55000,
     payload_max_kg: 38000,
@@ -76,7 +77,7 @@ export const SHARED_PARAMS = {
 };
 
 // Demo default matches board slide 9 (4,000 kg payload, ~230 km range, ~200 kWh).
-export const DEFAULT_VEHICLE = { ...SHARED_PARAMS, ...VEHICLES.find((v) => v.name === 'Ultra E.9') };
+export const DEFAULT_VEHICLE = { ...SHARED_PARAMS, ...VEHICLES.find((v) => v.name === 'e-ICV 11T') };
 
 export const DEFAULT_TARIFF = 8.5; // ₹/kWh (assumption)
 
@@ -85,6 +86,6 @@ export const DEFAULT_CHARGER_KW = 120; // DC fast-charge power assumption, ₹/k
 // Route Guarantee (lib/guarantee.js) defaults — the illustrative underwriting model's
 // assumptions, editable on Settings so the CFO-facing numbers are never a black box.
 export const DEFAULT_GUARANTEE_PCT = 96; // house guarantee level shown by default
-export const DEFAULT_MARGIN = 0.08; // Tata's margin on top of cost + risk buffer
+export const DEFAULT_MARGIN = 0.08; // operator's margin on top of cost + risk buffer
 export const DEFAULT_DISRUPTION_COST_PER_KM = 2.0; // ₹/km residual-risk load for the rare miss
 export const BASELINE_TRIPS = 1500; // reference trip count the risk band (best/worst) was sized against

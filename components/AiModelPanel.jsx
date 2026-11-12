@@ -35,7 +35,7 @@ export default function AiModelPanel() {
           <div className="mb-1 text-sm font-semibold text-foreground">Learned correction model</div>
           <p className="mb-2.5 text-[11px] leading-relaxed text-muted-foreground">
             A linear regression fit on {CALIBRATION_TRAINED_ON.toLocaleString()} synthetic past
-            trips (stand-in for real Fleet Edge outcomes), mapping trip features to a correction
+            trips (stand-in for real fleet telematics outcomes), mapping trip features to a correction
             factor applied on top of the physics estimate.
           </p>
           <table className="mb-1 w-full border-collapse text-xs">

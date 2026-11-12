@@ -45,7 +45,7 @@ export default function GuaranteeView() {
         <h2 className="mb-4 text-lg font-bold text-foreground">Route Guarantee</h2>
         <Card className="flex items-start gap-3 border-dashed p-5 text-sm text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
-          Compute a trip on Plan Trip first — the Route Guarantee prices Tata's commitment from
+          Compute a trip on Plan Trip first — the Route Guarantee prices the operator's commitment from
           that trip's expected/best/worst energy numbers, not a fresh calculation.
         </Card>
       </div>
@@ -87,7 +87,7 @@ export default function GuaranteeView() {
                   <Badge variant="default">{fmtNum(guaranteePct, 1)}% completion guarantee</Badge>
                 </div>
                 <h3 className="text-xl font-bold leading-snug text-foreground sm:text-2xl">
-                  Tata can commit ₹{fmtNum(priced.committed_price_per_km, 2)}/km on {lastTrip.origin} →{' '}
+                  Guaranteed ₹{fmtNum(priced.committed_price_per_km, 2)}/km on {lastTrip.origin} →{' '}
                   {lastTrip.destination}
                 </h3>
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -104,7 +104,7 @@ export default function GuaranteeView() {
                 </h3>
                 <p className="mt-2 text-sm text-muted-foreground">
                   Insufficient trip history at this guarantee level — only {corridorTrips.toLocaleString()} corridor
-                  trips logged. Lower the guarantee % or wait for more Fleet Edge trips on this corridor.
+                  trips logged. Lower the guarantee % or wait for more logged trips on this corridor.
                 </p>
               </>
             )}
@@ -167,7 +167,7 @@ export default function GuaranteeView() {
           <Card className="border-dashed p-5 text-xs text-muted-foreground">
             <span className="font-semibold text-foreground">Illustrative underwriting model</span> — not
             actuarial. Corridor: {corridorKey || '—'}. Assumptions: {corridorTrips.toLocaleString()} logged
-            corridor trips (synthetic, stands in for Fleet Edge history), risked against a{' '}
+            corridor trips (synthetic, stands in for real fleet telematics history), risked against a{' '}
             {BASELINE_TRIPS.toLocaleString()}-trip baseline band, {fmtNum(margin * 100, 0)}% margin, ₹
             {fmtNum(disruptionCostPerKm, 1)}/km disruption load — all editable on Settings.
           </Card>

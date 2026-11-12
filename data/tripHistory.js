@@ -1,4 +1,4 @@
-// Synthetic historical trip outcomes — stands in for real Fleet Edge telematics data
+// Synthetic historical trip outcomes — stands in for real fleet telematics telematics data
 // (the "data flywheel" from the deck). Deterministic (seeded PRNG) so the same 1,500
 // records, and the same fitted coefficients in lib/calibration.js, come out on every
 // run/demo. NOT real data — documented here as a placeholder for a live feed.

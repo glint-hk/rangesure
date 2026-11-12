@@ -11,6 +11,7 @@ import GuaranteeView from '@/components/GuaranteeView';
 import { SettingsProvider } from '@/lib/settingsContext';
 import { TripHistoryProvider } from '@/lib/tripHistoryContext';
 import { LastTripProvider } from '@/lib/lastTripContext';
+import AppFooter from '@/components/AppFooter';
 
 export default function Page() {
   const [active, setActive] = useState('plan');
@@ -21,7 +22,7 @@ export default function Page() {
         <LastTripProvider>
           <div className="flex min-h-screen bg-background">
             <Sidebar active={active} onSelect={setActive} />
-            <main className="min-w-0 flex-1 overflow-x-hidden px-4 pb-24 pt-5 sm:px-6 sm:pt-6 lg:pb-6">
+            <main className="min-w-0 flex-1 overflow-x-hidden px-4 pb-24 pt-20 sm:px-6 lg:pb-6 lg:pt-6">
               {active === 'plan' && <DriverView />}
               {active === 'guarantee' && <GuaranteeView />}
               {active === 'trips' && <TripsView />}
@@ -29,6 +30,7 @@ export default function Page() {
               {active === 'charging' && <ChargingView />}
               {active === 'reports' && <ReportsView />}
               {active === 'settings' && <SettingsView />}
+              <AppFooter />
             </main>
           </div>
         </LastTripProvider>

@@ -1,4 +1,4 @@
-// Synthetic per-corridor completed-trip counts — stands in for real Fleet Edge
+// Synthetic per-corridor completed-trip counts — stands in for real fleet telematics
 // corridor history (the data flywheel behind the Route Guarantee: more trips on a
 // corridor -> tighter uncertainty -> a cheaper, more confident committed price).
 // A few named corridors are seeded with real-looking volumes; anything else falls back

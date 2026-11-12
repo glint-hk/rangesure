@@ -10,9 +10,10 @@ import {
   DEFAULT_DISRUPTION_COST_PER_KM,
 } from '@/config';
 
-// v3: bumped when the Route Guarantee margin/disruption-cost assumptions were added —
+// v4: bumped when vehicle presets were renamed to generic class names (stale names
+// would no longer match VEHICLES). v3: bumped when the Route Guarantee margin/disruption-cost assumptions were added —
 // older payloads simply lack those keys and fall back to the config.js defaults below.
-const STORAGE_KEY = 'rangesure-settings-v3';
+const STORAGE_KEY = 'rangesure-settings-v4';
 const SettingsContext = createContext(null);
 
 // Vehicle params + default tariff, editable on the Settings page and used live by
