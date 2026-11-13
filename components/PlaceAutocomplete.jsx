@@ -130,7 +130,7 @@ export default function PlaceAutocomplete({
       {open && suggestions.length > 0 && (
         <ul
           role="listbox"
-          className="absolute z-20 mt-1.5 max-h-60 w-full min-w-[240px] overflow-auto rounded-xl border border-border bg-surface py-1 shadow-xl"
+          className="absolute z-20 mt-1.5 max-h-60 w-full min-w-[240px] overflow-auto rounded-lg border border-border bg-surface py-1 shadow-[0_16px_40px_-12px_rgba(18,23,43,0.25)]"
         >
           {suggestions.map((s, i) => (
             <li key={`${s.label}-${i}`} role="presentation">

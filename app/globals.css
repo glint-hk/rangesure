@@ -1,31 +1,37 @@
 @import 'tailwindcss';
 
-/* Cream + blue theme: warm cream background, white cards, navy text, blue primary.
-   Tailwind v4 turns each --color-* var below into a utility (bg-background,
-   text-primary, border-border, etc). */
+/* "Private bank" theme: porcelain workspace, white surfaces, hairline borders, deep navy
+   ink + primary, a single gold accent. Tailwind v4 turns each --color-* var into a
+   utility (bg-background, text-primary, border-border, text-accent, ...). */
 @theme {
-  --color-background: #faf6ec;
-  --color-background-alt: #f2e9d4;
+  --color-background: #f5f3ee;
+  --color-background-alt: #0d1226; /* sidebar / app chrome */
   --color-surface: #ffffff;
-  --color-surface-raised: #f6f1e3;
-  --color-foreground: #1e2a3a;
-  --color-muted-foreground: #6b7280;
-  --color-border: #e7dfc7;
+  --color-surface-raised: #faf9f6;
+  --color-foreground: #12172b;
+  --color-muted-foreground: #6a6f84;
+  --color-border: #e6e2d8;
 
-  --color-primary: #2563eb;
+  --color-primary: #1b2550;
   --color-primary-foreground: #ffffff;
-  --color-success: #16a34a;
-  --color-success-foreground: #f0fdf4;
-  --color-warning: #d97706;
+  --color-accent: #a9822e;
+  --color-accent-soft: #f4ecd9;
+  --color-success: #0e7a57;
+  --color-success-foreground: #ecfdf5;
+  --color-warning: #b26a00;
   --color-warning-foreground: #451a03;
-  --color-danger: #dc2626;
+  --color-danger: #b42318;
   --color-danger-foreground: #fef2f2;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-display-serif), 'Cormorant Garamond', Georgia, serif;
 
-  --radius-lg: 1rem;
-  --radius-xl: 1.25rem;
-  --radius-2xl: 1.5rem;
+  --radius-lg: 0.5rem;
+  --radius-xl: 0.75rem;
+  --radius-2xl: 0.875rem;
+
+  --shadow-soft: 0 1px 1px rgba(18, 23, 43, 0.03), 0 2px 6px -2px rgba(18, 23, 43, 0.06);
+  --shadow-lift: 0 1px 2px rgba(18, 23, 43, 0.04), 0 12px 32px -12px rgba(18, 23, 43, 0.18);
 }
 
 * {
@@ -40,19 +46,61 @@ body {
 body {
   font-family: var(--font-sans);
   color: var(--color-foreground);
-  background: var(--color-background);
+  background:
+    radial-gradient(1200px 420px at 70% -120px, rgba(169, 130, 46, 0.07), transparent 70%),
+    var(--color-background);
+  background-attachment: fixed;
+  font-feature-settings: 'cv11', 'ss01';
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+::selection {
+  background: rgba(169, 130, 46, 0.22);
+}
+/* Figures line up in every table, tile and gauge. */
+.tabular,
+table,
+input[type='number'] {
+  font-variant-numeric: tabular-nums;
+}
+.font-display {
+  font-variant-numeric: lining-nums;
+  letter-spacing: -0.01em;
 }
 
-/* Leaflet's own CSS ships some hardcoded chrome — restyle the pieces that would
-   otherwise look like an unstyled rectangle dropped into the cream/blue theme. */
+/* Leaflet chrome restyled to match. */
 .leaflet-container {
-  background: var(--color-surface);
+  background: #eef0f2;
   font-family: var(--font-sans);
 }
 .leaflet-control-attribution {
-  background: rgba(255, 255, 255, 0.85) !important;
+  background: rgba(255, 255, 255, 0.8) !important;
   color: var(--color-muted-foreground) !important;
+  font-size: 10px !important;
 }
 .leaflet-control-attribution a {
   color: var(--color-primary) !important;
+}
+.leaflet-bar {
+  border: 1px solid var(--color-border) !important;
+  border-radius: 8px !important;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft) !important;
+}
+.leaflet-bar a {
+  color: var(--color-foreground) !important;
+  border-bottom-color: var(--color-border) !important;
+}
+.rs-marker {
+  background: transparent;
+  border: 0;
+}
+.leaflet-popup-content-wrapper {
+  border-radius: 8px;
+  box-shadow: var(--shadow-lift);
+  font-size: 12.5px;
+}
+/* Mute the OSM basemap into a quiet, warm grey so the navy route and gold markers lead. */
+.leaflet-tile-pane {
+  filter: grayscale(1) sepia(0.12) brightness(1.06) contrast(0.88);
 }

@@ -12,9 +12,9 @@ export default function CohortAnomalyBanner({ vehicleName, expectedKwhPerKm, cla
 
   return (
     <div
-      className={`flex items-start gap-2 rounded-xl border border-warning/30 bg-warning/10 px-3 py-2.5 text-sm text-warning ${className || ''}`}
+      className={`flex items-start gap-2.5 rounded-lg border border-accent/25 border-l-[3px] border-l-accent bg-accent-soft/70 px-3.5 py-3 text-[12.5px] leading-relaxed text-foreground ${className || ''}`}
     >
-      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+      <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0 text-accent" strokeWidth={1.75} aria-hidden="true" />
       <span>
         Fleet insight: this truck is drawing ~{Math.abs(Math.round(anomaly.pctAbove))}% above its {vehicleName}{' '}
         cohort — possible battery degradation; schedule a check.{' '}

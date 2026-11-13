@@ -91,7 +91,7 @@ export default function ChargingView() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h2 className="mb-4 text-lg font-bold text-foreground">Charging network</h2>
+      <h2 className="mb-4 font-display text-[30px] font-semibold leading-tight text-foreground">Charging network</h2>
       <div className="relative mb-4">
         <PlaceAutocomplete
           value={place}
@@ -103,7 +103,7 @@ export default function ChargingView() {
             runSearch(query);
           }}
           placeholder="Type a city, e.g. Pune"
-          inputClassName="h-11 w-full rounded-xl border border-border bg-surface-raised px-3.5 pr-10 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+          inputClassName="h-10 w-full px-3.5 pr-10 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
         />
         {loading && (
           <Loader2
@@ -131,7 +131,7 @@ export default function ChargingView() {
       )}
 
       {(center || stations.length > 0) && (
-        <div className="mb-4 h-[320px] overflow-hidden rounded-2xl border border-border">
+        <div className="mb-4 h-[320px] overflow-hidden rounded-xl border border-border">
           <RouteMap
             positions={null}
             distanceKm={0}

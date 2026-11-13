@@ -15,7 +15,7 @@ export default function TripsView() {
   return (
     <div className="mx-auto max-w-5xl">
       <div className="mb-4 flex items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-foreground">Trip history</h2>
+        <h2 className="font-display text-[30px] font-semibold leading-tight text-foreground">Trip history</h2>
         {trips.length > 0 && (
           <Button type="button" variant="secondary" size="sm" onClick={clearHistory}>
             Clear history
@@ -29,7 +29,7 @@ export default function TripsView() {
           aren't logged (Fleet has its own dashboard).
         </Card>
       ) : (
-        <div className="overflow-x-auto rounded-2xl border border-border">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full border-collapse bg-surface text-sm">
             <thead>
               <tr>

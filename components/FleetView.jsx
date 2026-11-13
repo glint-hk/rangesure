@@ -177,7 +177,7 @@ export default function FleetView() {
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <h2 className="text-lg font-bold text-foreground">Fleet dashboard</h2>
+        <h2 className="font-display text-[30px] font-semibold leading-tight text-foreground">Fleet dashboard</h2>
         <div className="flex items-center gap-2">
           <Select value={vehicle.name} onValueChange={selectVehicle}>
             <SelectTrigger className="w-56">
@@ -236,7 +236,7 @@ export default function FleetView() {
 
       {validRows.length > 0 && (
         <Card className="mb-4 p-5">
-          <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          <h3 className="mb-3 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
             <ShieldCheck className="h-3.5 w-3.5 text-primary" aria-hidden="true" />
             Guarantee book · {HOUSE_GUARANTEE_PCT}% house guarantee
           </h3>
@@ -269,7 +269,7 @@ export default function FleetView() {
       )}
 
       {rows.length > 0 && (
-        <div className="overflow-x-auto rounded-2xl border border-border">
+        <div className="overflow-x-auto rounded-xl border border-border">
           <table className="w-full border-collapse bg-surface text-sm">
             <thead>
               <tr>

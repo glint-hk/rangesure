@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Loader2, AlertCircle, Info, MapPinned, Gauge, ShieldCheck } from 'lucide-react';
+import { Loader2, AlertCircle, Info, MapPinned, Gauge, ShieldCheck, Sparkles, ArrowRight } from 'lucide-react';
 import { DEFAULT_TARIFF, VEHICLES } from '@/config';
 import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments, findSteepestClimb } from '@/lib/segments';
@@ -567,15 +567,22 @@ export default function DriverView() {
 
   const inputsForm = (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" size="sm" onClick={() => applyPreset(HERO_PRESET)} type="button">
-          {HERO_PRESET.label}
-        </Button>
-        <Button variant="secondary" size="sm" onClick={() => applyPreset(NASHIK_PRESET)} type="button">
-          {NASHIK_PRESET.label}
-        </Button>
+      <div>
+        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          One-click scenarios
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" size="sm" onClick={() => applyPreset(HERO_PRESET)} type="button">
+            <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
+            {HERO_PRESET.label}
+          </Button>
+          <Button variant="secondary" size="sm" onClick={() => applyPreset(NASHIK_PRESET)} type="button">
+            {NASHIK_PRESET.label}
+          </Button>
+        </div>
       </div>
-      <div className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+      <div className="h-px bg-border" />
+      <div className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
         <div className="flex items-center gap-1.5">
           Vehicle
           <TooltipProvider>
@@ -605,33 +612,33 @@ export default function DriverView() {
         </Select>
       </div>
       <div className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+        <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
           Origin
           <PlaceAutocomplete
             value={origin}
             onChange={setOrigin}
             placeholder="e.g. Mumbai"
-            inputClassName="h-11 w-full rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+            inputClassName="h-10 w-full px-3 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
           />
         </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+        <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
           Destination
           <PlaceAutocomplete
             value={destination}
             onChange={setDestination}
             placeholder="e.g. Pune"
-            inputClassName="h-11 w-full rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+            inputClassName="h-10 w-full px-3 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
           />
         </label>
       </div>
       <div className="grid grid-cols-3 gap-3">
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+        <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
           Payload (kg, max {vehicle.payload_max_kg?.toLocaleString()})
           <input
             type="number"
             min={0}
             max={vehicle.payload_max_kg}
-            className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             value={payload}
             onChange={(e) => {
               const raw = Number(e.target.value);
@@ -646,36 +653,36 @@ export default function DriverView() {
             </span>
           )}
         </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+        <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
           Battery (%)
           <input
             type="number"
             min="0"
             max="100"
-            className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             value={battery}
             onChange={(e) => setBattery(Number(e.target.value))}
           />
         </label>
-        <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+        <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
           Tariff (₹/kWh)
           <input
             type="number"
             step="0.1"
-            className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             value={tariff}
             onChange={(e) => setTariff(Number(e.target.value))}
           />
         </label>
       </div>
-      <label className="flex flex-col gap-1.5 text-xs font-medium text-muted-foreground">
+      <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
         Delivery window (hours, optional)
         <input
           type="number"
           step="0.5"
           min="0"
           placeholder="e.g. 6"
-          className="h-11 rounded-xl border border-border bg-surface-raised px-3 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+          className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
           value={deliveryWindow}
           onChange={(e) => setDeliveryWindow(e.target.value)}
         />
@@ -718,15 +725,15 @@ export default function DriverView() {
   // under the inputs on desktop, or stacked after the verdict/metrics on mobile.
   const tripPlanCard = result && (
     <Card className="p-5">
-      <h3 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <h3 className="mb-3 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-accent">
         Your trip plan
       </h3>
       {result.physics_kWh_per_km != null && (
-        <div className="mb-3 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5">
+        <div className="mb-3 rounded-lg border border-border bg-surface-raised px-3.5 py-3">
           <div className="text-sm text-foreground">
-            Physics estimate <span className="font-mono">{result.physics_kWh_per_km.toFixed(2)}</span> kWh/km
+            Physics estimate <span className="tabular font-semibold">{result.physics_kWh_per_km.toFixed(2)}</span> kWh/km
             {' → '}
-            Calibrated <span className="font-mono font-semibold text-primary">{result.kWh_per_km.toFixed(2)}</span> kWh/km
+            Calibrated <span className="tabular font-semibold text-primary">{result.kWh_per_km.toFixed(2)}</span> kWh/km
             {' '}
             <span className="text-muted-foreground">(learned from {result.calibration_trained_on?.toLocaleString()} trips)</span>
           </div>
@@ -744,16 +751,19 @@ export default function DriverView() {
 
   return (
     <div className="mx-auto max-w-7xl">
-      <header className="mb-5 flex flex-col gap-1">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">
-          Dyaus RangeSure · AI trip intelligence for electric trucks
+      <header className="mb-7 flex flex-col gap-2.5 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-accent">
+            <span className="h-px w-6 bg-accent/60" />
+            AI trip intelligence for electric trucks
+          </div>
+          <h1 className="font-display mt-2.5 max-w-3xl text-[32px] font-semibold leading-[1.05] text-foreground sm:text-[42px]">
+            Will this e-truck make the trip, and what will each kilometre cost?
+          </h1>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground sm:text-[28px]">
-          Will this e-truck make the trip, and what will each km cost?
-        </h1>
-        <p className="max-w-3xl text-sm text-muted-foreground">
-          Live route, terrain and weather, a physics model calibrated on past trips, and an honest confidence
-          band. Then turn the answer into a guaranteed price per km.
+        <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground lg:text-right">
+          Live route, terrain and weather, a physics model calibrated on 1,500 trips, and an honest confidence
+          band, turned into a price per km you can guarantee.
         </p>
       </header>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1.5fr_1fr] lg:items-start">
@@ -761,12 +771,18 @@ export default function DriverView() {
             gets the Trip Plan panel directly beneath it, filling what used to be empty
             space in this column. */}
         <div className="flex flex-col gap-4">
-          <Card className="p-5">{inputsForm}</Card>
+          <Card className="p-5">
+            <div className="mb-4 flex items-baseline justify-between">
+              <h2 className="font-display text-[22px] font-semibold leading-none text-foreground">Trip details</h2>
+              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Inputs</span>
+            </div>
+            {inputsForm}
+          </Card>
           {isDesktop && tripPlanCard}
         </div>
 
         {/* Mobile order: verdict, metrics, trip plan, map. Desktop: map is the center pane. */}
-        <div className="order-2 h-[320px] overflow-hidden rounded-2xl border border-border lg:order-none lg:h-[560px]">
+        <div className="order-2 h-[320px] overflow-hidden rounded-xl border border-border shadow-[0_1px_1px_rgba(18,23,43,0.03),0_8px_24px_-12px_rgba(18,23,43,0.15)] lg:order-none lg:h-[600px]">
           <RouteMap
             positions={positions}
             distanceKm={result?.dist_km || (route ? route.distance_m / 1000 : 0)}
@@ -777,31 +793,41 @@ export default function DriverView() {
 
         <div className="order-1 flex flex-col gap-4 lg:order-none">
           {!result && !loading && (
-            <Card className="p-5">
-              <h2 className="text-sm font-semibold text-foreground">How it works</h2>
-              <p className="mt-1 text-xs text-muted-foreground">
-                Tap <span className="font-medium text-foreground">Mumbai → Pune</span> for a one-click demo, or
-                enter your own trip.
-              </p>
-              <ol className="mt-4 space-y-3">
+            <Card className="overflow-hidden">
+              <div className="border-b border-border bg-surface-raised px-5 py-4">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">How it works</div>
+                <h2 className="font-display mt-1 text-[22px] font-semibold leading-tight text-foreground">
+                  From route to guaranteed price in three steps
+                </h2>
+              </div>
+              <ol className="space-y-4 px-5 py-5">
                 {[
                   { icon: MapPinned, title: 'Plan the route', text: 'Real road, elevation and live weather along the way.' },
                   { icon: Gauge, title: 'Get an honest verdict', text: 'Energy per km, arrival battery, charge stops and a confidence band.' },
                   { icon: ShieldCheck, title: 'Price a guarantee', text: 'Open Guarantee to turn the result into a committed ₹/km.' },
                 ].map(({ icon: Icon, title, text }, i) => (
-                  <li key={title} className="flex gap-3">
-                    <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                      <Icon className="h-4 w-4" aria-hidden="true" />
+                  <li key={title} className="flex gap-3.5">
+                    <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-primary shadow-[0_1px_1px_rgba(18,23,43,0.04)]">
+                      <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
+                      <span className="tabular absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-background-alt text-[9px] font-semibold text-[#e2c47e]">
+                        {i + 1}
+                      </span>
                     </span>
                     <div>
-                      <div className="text-sm font-medium text-foreground">
-                        {i + 1}. {title}
-                      </div>
-                      <div className="text-xs text-muted-foreground">{text}</div>
+                      <div className="text-[13.5px] font-medium text-foreground">{title}</div>
+                      <div className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">{text}</div>
                     </div>
                   </li>
                 ))}
               </ol>
+              <button
+                type="button"
+                onClick={() => applyPreset(HERO_PRESET)}
+                className="group flex w-full items-center justify-between border-t border-border px-5 py-3.5 text-left text-[13px] font-medium text-primary transition-colors hover:bg-surface-raised"
+              >
+                Run the Mumbai → Pune demo
+                <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+              </button>
             </Card>
           )}
           {loading && !result && (

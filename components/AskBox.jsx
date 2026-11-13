@@ -52,7 +52,7 @@ export default function AskBox({ result, arrivalSocPct }) {
 
   return (
     <div className="mt-4 border-t border-border pt-4">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+      <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
         Ask about this trip
       </div>
       <div className="flex gap-2">
@@ -61,7 +61,7 @@ export default function AskBox({ result, arrivalSocPct }) {
           onChange={(e) => setQuestion(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && ask()}
           placeholder="e.g. what if I add 3 tonnes?"
-          className="h-10 flex-1 rounded-xl border border-border bg-surface-raised px-3 text-sm text-foreground outline-none focus:ring-2 focus:ring-primary/50"
+          className="h-10 flex-1 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
         />
         <Button type="button" size="icon" onClick={ask} disabled={loading || !question.trim()}>
           {loading ? (

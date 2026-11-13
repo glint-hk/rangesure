@@ -64,11 +64,11 @@ export default function SettingsView() {
   };
 
   const inputClass =
-    'h-10 rounded-lg border border-border bg-surface px-2.5 text-[15px] text-foreground outline-none focus:ring-2 focus:ring-primary/50';
+    'h-10 px-2.5 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20';
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h2 className="mb-1 text-lg font-bold text-foreground">Vehicle &amp; pricing settings</h2>
+      <h2 className="mb-1 font-display text-[30px] font-semibold leading-tight text-foreground">Vehicle &amp; pricing settings</h2>
       <p className="mb-4 -mt-0.5 text-sm text-muted-foreground">
         These feed the physics model on every Plan Trip calculation and Fleet run — changes apply
         immediately and are saved in this browser only.

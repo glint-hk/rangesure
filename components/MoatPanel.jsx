@@ -56,7 +56,7 @@ export default function MoatPanel({
 
   return (
     <Card className="p-6">
-      <h4 className="mb-1 text-sm font-bold text-foreground">Why only a data-rich operator can price this</h4>
+      <h4 className="mb-1 text-sm font-semibold text-foreground">Why only a data-rich operator can price this</h4>
       <p className="mb-4 text-xs text-muted-foreground">
         Illustrative underwriting model — same trip, same {fmtNum(guarantee_pct, 1)}% guarantee, plotted across
         how many corridor trips have been logged.

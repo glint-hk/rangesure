@@ -10,7 +10,7 @@ export default function ReportsView() {
   if (trips.length === 0) {
     return (
       <div className="mx-auto max-w-5xl">
-        <h2 className="mb-4 text-lg font-bold text-foreground">Reports</h2>
+        <h2 className="mb-4 font-display text-[30px] font-semibold leading-tight text-foreground">Reports</h2>
         <Card className="border-dashed p-5 text-sm text-muted-foreground">
           No trips logged yet — run trips on Plan Trip to build up data here.
         </Card>
@@ -40,7 +40,7 @@ export default function ReportsView() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h2 className="mb-1 text-lg font-bold text-foreground">Reports</h2>
+      <h2 className="mb-1 font-display text-[30px] font-semibold leading-tight text-foreground">Reports</h2>
       <p className="mb-4 text-sm text-muted-foreground">
         Aggregated from every trip logged on Plan Trip. Fleet runs aren't included — Fleet has its
         own dashboard.

@@ -21,10 +21,13 @@ the real ones instead (slide 9 update pending). See the CALIBRATION comment in `
 
 ## Stack
 - Next.js App Router, JavaScript (NOT TypeScript). Deployed on Vercel.
-- Styling: Tailwind CSS v4 (`app/globals.css` — `@theme` block defines a cream/blue design
-  system: `background`/`background-alt` cream, `surface`/`surface-raised` off-white,
-  `foreground`/`muted-foreground` navy-grey text, `border` warm cream-grey, `primary` blue
-  (`#2563eb`), `success` green, `warning` amber, `danger` red) + hand-built shadcn/ui-pattern
+- Styling: Tailwind CSS v4 (`app/globals.css` — `@theme` block defines a premium "private bank"
+  system: `background` porcelain, `background-alt` deep navy (sidebar/mobile chrome, tooltips),
+  `surface` white, hairline `border`, `foreground` navy ink, `primary` deep navy (`#1b2550`),
+  `accent` gold (`#a9822e`) for eyebrows/active states/highlights, muted `success`/`warning`/
+  `danger`. Headlines use the `font-display` serif (Cormorant Garamond via next/font), numbers
+  use the `.tabular` utility. The map uses OSM tiles muted by a CSS filter on
+  `.leaflet-tile-pane` (CARTO basemaps now need an API key) with custom div markers) + hand-built shadcn/ui-pattern
   primitives in `components/ui/` (button, card, badge, tabs, sheet, select, skeleton, tooltip,
   slider — Radix primitives + `class-variance-authority` + `lib/utils.js`'s `cn()`), matching
   what the shadcn CLI would generate so 21st.dev component variants can drop in later without a

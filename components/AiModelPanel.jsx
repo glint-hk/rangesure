@@ -43,7 +43,7 @@ export default function AiModelPanel() {
               {CALIBRATION_COEFFICIENTS.map((c) => (
                 <tr key={c.name} className="border-b border-border">
                   <td className="py-1 text-muted-foreground">{LABELS[c.name] || c.name}</td>
-                  <td className="py-1 text-right font-mono font-semibold text-foreground">
+                  <td className="py-1 text-right tabular font-semibold text-foreground">
                     {c.value >= 0 ? '+' : ''}
                     {c.value}
                   </td>

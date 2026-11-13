@@ -42,7 +42,7 @@ export default function GuaranteeView() {
   if (!lastTrip) {
     return (
       <div className="mx-auto max-w-6xl">
-        <h2 className="mb-4 text-lg font-bold text-foreground">Route Guarantee</h2>
+        <h2 className="mb-4 font-display text-[30px] font-semibold leading-tight text-foreground">Route Guarantee</h2>
         <Card className="flex items-start gap-3 border-dashed p-5 text-sm text-muted-foreground">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-primary" aria-hidden="true" />
           Compute a trip on Plan Trip first — the Route Guarantee prices the operator's commitment from
@@ -63,13 +63,13 @@ export default function GuaranteeView() {
 
   const BAR_COLORS = {
     primary: 'bg-primary',
-    warning: 'bg-warning',
+    warning: 'bg-accent',
     muted: 'bg-muted-foreground/50',
   };
 
   return (
     <div className="mx-auto max-w-6xl">
-      <h2 className="mb-4 text-lg font-bold text-foreground">Route Guarantee</h2>
+      <h2 className="mb-4 font-display text-[30px] font-semibold leading-tight text-foreground">Route Guarantee</h2>
 
       <CohortAnomalyBanner
         vehicleName={lastTrip.vehicleName}
@@ -86,7 +86,7 @@ export default function GuaranteeView() {
                 <div className="mb-2">
                   <Badge variant="default">{fmtNum(guaranteePct, 1)}% completion guarantee</Badge>
                 </div>
-                <h3 className="text-xl font-bold leading-snug text-foreground sm:text-2xl">
+                <h3 className="font-display mt-1 text-[30px] font-semibold leading-[1.05] text-foreground sm:text-[36px]">
                   Guaranteed ₹{fmtNum(priced.committed_price_per_km, 2)}/km on {lastTrip.origin} →{' '}
                   {lastTrip.destination}
                 </h3>
@@ -99,7 +99,7 @@ export default function GuaranteeView() {
             ) : (
               <>
                 <Badge variant="danger">Not yet underwritable</Badge>
-                <h3 className="mt-2 text-xl font-bold leading-snug text-foreground sm:text-2xl">
+                <h3 className="font-display mt-2 text-[28px] font-semibold leading-[1.05] text-foreground sm:text-[32px]">
                   Not yet underwritable on {lastTrip.origin} → {lastTrip.destination}
                 </h3>
                 <p className="mt-2 text-sm text-muted-foreground">
@@ -113,7 +113,7 @@ export default function GuaranteeView() {
           <Card className="p-6">
             <div className="mb-2 flex items-center justify-between text-sm font-medium text-foreground">
               <span>Guarantee level</span>
-              <span className="font-mono text-primary">{fmtNum(guaranteePct, 1)}%</span>
+              <span className="tabular text-primary">{fmtNum(guaranteePct, 1)}%</span>
             </div>
             <Slider
               min={GUARANTEE_MIN}
@@ -135,7 +135,7 @@ export default function GuaranteeView() {
         {/* Right: breakdown + assumptions context */}
         <div className="flex flex-col gap-4">
           <Card className="p-6">
-            <h4 className="mb-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            <h4 className="mb-3 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               What the CFO is paying for (₹/km)
             </h4>
             <div className="flex h-4 w-full overflow-hidden rounded-full bg-surface-raised">
@@ -154,12 +154,12 @@ export default function GuaranteeView() {
                     <span className={`h-2.5 w-2.5 rounded-full ${BAR_COLORS[b.variant]}`} />
                     {b.label}
                   </span>
-                  <span className="font-mono text-foreground">₹{fmtNum(b.value, 2)}</span>
+                  <span className="tabular text-foreground">₹{fmtNum(b.value, 2)}</span>
                 </li>
               ))}
               <li className="mt-1 flex items-center justify-between border-t border-border pt-1.5 font-semibold">
                 <span className="text-foreground">Committed price</span>
-                <span className="font-mono text-primary">₹{fmtNum(priced.committed_price_per_km, 2)}</span>
+                <span className="tabular text-primary">₹{fmtNum(priced.committed_price_per_km, 2)}</span>
               </li>
             </ul>
           </Card>

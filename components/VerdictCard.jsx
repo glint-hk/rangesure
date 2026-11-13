@@ -11,6 +11,8 @@ const STATUS_STYLES = {
   ok: {
     icon: CheckCircle2,
     ring: 'ring-success/30',
+    strip: 'bg-success',
+    medal: 'bg-success/[0.08]',
     iconColor: 'text-success',
     badgeVariant: 'success',
     badgeLabel: 'Go',
@@ -18,6 +20,8 @@ const STATUS_STYLES = {
   warn: {
     icon: AlertTriangle,
     ring: 'ring-warning/30',
+    strip: 'bg-warning',
+    medal: 'bg-warning/[0.09]',
     iconColor: 'text-warning',
     badgeVariant: 'warning',
     badgeLabel: 'Charge stop needed',
@@ -25,6 +29,8 @@ const STATUS_STYLES = {
   uncertain: {
     icon: ShieldAlert,
     ring: 'ring-warning/40',
+    strip: 'bg-warning',
+    medal: 'bg-warning/[0.09]',
     iconColor: 'text-warning',
     badgeVariant: 'warning',
     badgeLabel: 'Low confidence',
@@ -32,6 +38,8 @@ const STATUS_STYLES = {
   danger: {
     icon: XCircle,
     ring: 'ring-danger/30',
+    strip: 'bg-danger',
+    medal: 'bg-danger/[0.08]',
     iconColor: 'text-danger',
     badgeVariant: 'danger',
     badgeLabel: 'Not feasible',
@@ -69,9 +77,13 @@ export default function VerdictCard({
   const Icon = s.icon;
 
   return (
-    <Card className={cn('relative overflow-hidden p-6 ring-1', s.ring)}>
+    <Card className="relative overflow-hidden p-6 shadow-[0_1px_1px_rgba(18,23,43,0.03),0_12px_32px_-14px_rgba(18,23,43,0.22)]">
+      <span className={cn('absolute inset-x-0 top-0 h-[3px]', s.strip)} aria-hidden="true" />
+      <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Verdict</div>
       <div className="flex items-start gap-4">
-        <Icon className={cn('h-9 w-9 shrink-0', s.iconColor)} aria-hidden="true" />
+        <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-full', s.medal)}>
+          <Icon className={cn('h-6 w-6', s.iconColor)} strokeWidth={1.75} aria-hidden="true" />
+        </span>
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
             <Badge variant={s.badgeVariant}>{s.badgeLabel}</Badge>
@@ -84,8 +96,8 @@ export default function VerdictCard({
               // desktop), and even a short fixed message like "Low confidence — manual
               // planning advised" wraps to 3 lines there — clamping at 2 was cutting
               // real words off a headline that isn't even a long variable place name.
-              'line-clamp-3 break-words font-bold leading-snug text-foreground',
-              headline && headline.length > 40 ? 'text-lg sm:text-xl' : 'text-xl sm:text-2xl'
+              'font-display line-clamp-3 break-words font-semibold leading-[1.1] text-foreground',
+              headline && headline.length > 40 ? 'text-[22px] sm:text-[24px]' : 'text-[26px] sm:text-[30px]'
             )}
           >
             {headline}
@@ -108,8 +120,8 @@ export default function VerdictCard({
               so it gets its own callout near the top rather than being buried as one of
               several guidance bullets further down the page. */}
           {climb && (
-            <div className="mt-3 flex items-start gap-2 rounded-xl border border-primary/20 bg-primary/5 px-3 py-2.5 text-sm text-foreground">
-              <Mountain className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-accent/25 bg-accent-soft/60 px-3 py-2.5 text-[13px] text-foreground">
+              <Mountain className="mt-0.5 h-4 w-4 shrink-0 text-accent" strokeWidth={1.75} aria-hidden="true" />
               <span className="break-words">
                 Steep climb{climb.name ? ` near ${climb.name}` : ''}
                 {climb.grade ? ` (${climb.grade} grade)` : ''}
@@ -119,8 +131,11 @@ export default function VerdictCard({
           )}
 
           {(confidenceLow != null && confidenceHigh != null) && (
-            <div className="mt-4 text-sm font-medium text-primary">
-              Confidence: {confidenceLow}–{confidenceHigh}%
+            <div className="mt-4 flex items-baseline justify-between border-t border-border pt-3">
+              <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Confidence</span>
+              <span className="tabular text-[15px] font-semibold text-foreground">
+                {confidenceLow}–{confidenceHigh}%
+              </span>
             </div>
           )}
 
@@ -133,9 +148,9 @@ export default function VerdictCard({
                   <span className="text-muted-foreground"> (expected {clampDisplayPct(scenarios.expected.arrival_soc_pct)}%)</span>
                 </span>
               </div>
-              <div className="relative h-2 overflow-hidden rounded-full bg-surface-raised">
+              <div className="relative h-1.5 overflow-hidden rounded-full bg-[#ece8de]">
                 <div
-                  className="absolute inset-y-0 rounded-full bg-primary/50"
+                  className="absolute inset-y-0 rounded-full bg-gradient-to-r from-primary/40 to-primary/70"
                   style={{
                     left: `${scalePct(scenarios.worst.arrival_soc_pct)}%`,
                     width: `${Math.max(2, scalePct(scenarios.best.arrival_soc_pct) - scalePct(scenarios.worst.arrival_soc_pct))}%`,
