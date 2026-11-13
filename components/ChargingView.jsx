@@ -103,7 +103,7 @@ export default function ChargingView() {
             runSearch(query);
           }}
           placeholder="Type a city, e.g. Pune"
-          inputClassName="h-10 w-full px-3.5 pr-10 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+          inputClassName="h-10 w-full px-3.5 pr-10 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
         />
         {loading && (
           <Loader2

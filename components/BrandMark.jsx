@@ -42,8 +42,8 @@ export function BrandLockup({ className, compact = false, tone = 'light' }) {
         </div>
         <div
           className={cn(
-            'mt-1 text-[9.5px] font-semibold uppercase tracking-[0.2em]',
-            dark ? 'text-white/45' : 'text-muted-foreground'
+            'mt-1 text-[11px] font-semibold uppercase tracking-[0.2em]',
+            dark ? 'text-white/60' : 'text-muted-foreground'
           )}
         >
           by Dyaus Advisory

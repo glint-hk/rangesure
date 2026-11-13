@@ -568,7 +568,7 @@ export default function DriverView() {
   const inputsForm = (
     <div className="flex flex-col gap-4">
       <div>
-        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
           One-click scenarios
         </div>
         <div className="flex flex-wrap gap-2">
@@ -618,7 +618,7 @@ export default function DriverView() {
             value={origin}
             onChange={setOrigin}
             placeholder="e.g. Mumbai"
-            inputClassName="h-10 w-full px-3 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+            inputClassName="h-10 w-full px-3 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
           />
         </label>
         <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
@@ -627,7 +627,7 @@ export default function DriverView() {
             value={destination}
             onChange={setDestination}
             placeholder="e.g. Pune"
-            inputClassName="h-10 w-full px-3 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+            inputClassName="h-10 w-full px-3 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
           />
         </label>
       </div>
@@ -638,7 +638,7 @@ export default function DriverView() {
             type="number"
             min={0}
             max={vehicle.payload_max_kg}
-            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             value={payload}
             onChange={(e) => {
               const raw = Number(e.target.value);
@@ -659,7 +659,7 @@ export default function DriverView() {
             type="number"
             min="0"
             max="100"
-            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             value={battery}
             onChange={(e) => setBattery(Number(e.target.value))}
           />
@@ -669,7 +669,7 @@ export default function DriverView() {
           <input
             type="number"
             step="0.1"
-            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
             value={tariff}
             onChange={(e) => setTariff(Number(e.target.value))}
           />
@@ -682,7 +682,7 @@ export default function DriverView() {
           step="0.5"
           min="0"
           placeholder="e.g. 6"
-          className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+          className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
           value={deliveryWindow}
           onChange={(e) => setDeliveryWindow(e.target.value)}
         />
@@ -725,7 +725,7 @@ export default function DriverView() {
   // under the inputs on desktop, or stacked after the verdict/metrics on mobile.
   const tripPlanCard = result && (
     <Card className="p-5">
-      <h3 className="mb-3 text-[10.5px] font-semibold uppercase tracking-[0.16em] text-accent">
+      <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
         Your trip plan
       </h3>
       {result.physics_kWh_per_km != null && (
@@ -753,7 +753,7 @@ export default function DriverView() {
     <div className="mx-auto max-w-7xl">
       <header className="mb-7 flex flex-col gap-2.5 border-b border-border pb-6 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <div className="flex items-center gap-2 text-[10.5px] font-semibold uppercase tracking-[0.2em] text-accent">
+          <div className="flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.2em] text-accent">
             <span className="h-px w-6 bg-accent/60" />
             AI trip intelligence for electric trucks
           </div>
@@ -774,7 +774,7 @@ export default function DriverView() {
           <Card className="p-5">
             <div className="mb-4 flex items-baseline justify-between">
               <h2 className="font-display text-[22px] font-semibold leading-none text-foreground">Trip details</h2>
-              <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Inputs</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Inputs</span>
             </div>
             {inputsForm}
           </Card>
@@ -795,7 +795,7 @@ export default function DriverView() {
           {!result && !loading && (
             <Card className="overflow-hidden">
               <div className="border-b border-border bg-surface-raised px-5 py-4">
-                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-accent">How it works</div>
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">How it works</div>
                 <h2 className="font-display mt-1 text-[22px] font-semibold leading-tight text-foreground">
                   From route to guaranteed price in three steps
                 </h2>
@@ -809,7 +809,7 @@ export default function DriverView() {
                   <li key={title} className="flex gap-3.5">
                     <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-primary shadow-[0_1px_1px_rgba(18,23,43,0.04)]">
                       <Icon className="h-4 w-4" strokeWidth={1.75} aria-hidden="true" />
-                      <span className="tabular absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-background-alt text-[9px] font-semibold text-[#e2c47e]">
+                      <span className="tabular absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-background-alt text-[10px] font-semibold text-[#e2c47e]">
                         {i + 1}
                       </span>
                     </span>

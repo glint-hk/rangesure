@@ -17,11 +17,11 @@ L.Icon.Default.mergeOptions({
 const divIcon = (html, size) =>
   L.divIcon({ html, className: 'rs-marker', iconSize: [size, size], iconAnchor: [size / 2, size / 2] });
 const originIcon = divIcon(
-  '<span style="display:block;width:14px;height:14px;border-radius:50%;background:#fff;border:3.5px solid #1b2550;box-shadow:0 2px 6px rgba(13,18,38,.35)"></span>',
+  '<span style="display:block;width:14px;height:14px;border-radius:50%;background:#fff;border:3.5px solid #1e40af;box-shadow:0 2px 6px rgba(13,18,38,.35)"></span>',
   14
 );
 const destinationIcon = divIcon(
-  '<span style="display:block;width:18px;height:18px;border-radius:50%;background:#1b2550;border:3px solid #fff;box-shadow:0 0 0 2px #1b2550,0 4px 10px rgba(13,18,38,.4)"></span>',
+  '<span style="display:block;width:18px;height:18px;border-radius:50%;background:#1e40af;border:3px solid #fff;box-shadow:0 0 0 2px #1e40af,0 4px 10px rgba(13,18,38,.4)"></span>',
   18
 );
 const boltSvg =
@@ -91,7 +91,7 @@ export default function RouteMap({
         {hasRoute && (
           <>
             <Polyline positions={positions} pathOptions={{ color: '#ffffff', weight: 8, opacity: 0.95 }} />
-            <Polyline positions={positions} pathOptions={{ color: '#1b2550', weight: 4.5, opacity: 1 }} />
+            <Polyline positions={positions} pathOptions={{ color: '#1e40af', weight: 4.5, opacity: 1 }} />
             <Marker position={positions[0]} icon={originIcon} />
             <Marker position={positions[positions.length - 1]} icon={destinationIcon} />
           </>

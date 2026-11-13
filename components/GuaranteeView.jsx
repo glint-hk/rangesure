@@ -135,7 +135,7 @@ export default function GuaranteeView() {
         {/* Right: breakdown + assumptions context */}
         <div className="flex flex-col gap-4">
           <Card className="p-6">
-            <h4 className="mb-3 text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+            <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">
               What the CFO is paying for (₹/km)
             </h4>
             <div className="flex h-4 w-full overflow-hidden rounded-full bg-surface-raised">

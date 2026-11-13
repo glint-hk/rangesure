@@ -64,7 +64,7 @@ export default function SettingsView() {
   };
 
   const inputClass =
-    'h-10 px-2.5 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20';
+    'h-10 px-2.5 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20';
 
   return (
     <div className="mx-auto max-w-5xl">

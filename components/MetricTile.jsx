@@ -7,7 +7,7 @@ export default function MetricTile({ label, value, unit, trend, className }) {
 
   return (
     <Card className={cn('relative min-w-0 overflow-hidden p-4', className)}>
-      <div className="line-clamp-2 min-h-[2.4em] text-[10px] font-semibold uppercase leading-[1.2] tracking-[0.12em] text-muted-foreground" title={label}>
+      <div className="line-clamp-2 min-h-[2.4em] text-[11px] font-semibold uppercase leading-[1.2] tracking-[0.12em] text-muted-foreground" title={label}>
         {label}
       </div>
       <div className="mt-2 flex items-baseline gap-1">

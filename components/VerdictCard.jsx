@@ -79,7 +79,7 @@ export default function VerdictCard({
   return (
     <Card className="relative overflow-hidden p-6 shadow-[0_1px_1px_rgba(18,23,43,0.03),0_12px_32px_-14px_rgba(18,23,43,0.22)]">
       <span className={cn('absolute inset-x-0 top-0 h-[3px]', s.strip)} aria-hidden="true" />
-      <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Verdict</div>
+      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">Verdict</div>
       <div className="flex items-start gap-4">
         <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-full', s.medal)}>
           <Icon className={cn('h-6 w-6', s.iconColor)} strokeWidth={1.75} aria-hidden="true" />
@@ -132,7 +132,7 @@ export default function VerdictCard({
 
           {(confidenceLow != null && confidenceHigh != null) && (
             <div className="mt-4 flex items-baseline justify-between border-t border-border pt-3">
-              <span className="text-[10.5px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Confidence</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Confidence</span>
               <span className="tabular text-[15px] font-semibold text-foreground">
                 {confidenceLow}–{confidenceHigh}%
               </span>

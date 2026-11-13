@@ -4,23 +4,23 @@
    ink + primary, a single gold accent. Tailwind v4 turns each --color-* var into a
    utility (bg-background, text-primary, border-border, text-accent, ...). */
 @theme {
-  --color-background: #f5f3ee;
-  --color-background-alt: #0d1226; /* sidebar / app chrome */
+  --color-background: #f6f4ef;
+  --color-background-alt: #0c1430; /* sidebar / app chrome */
   --color-surface: #ffffff;
   --color-surface-raised: #faf9f6;
-  --color-foreground: #12172b;
-  --color-muted-foreground: #6a6f84;
-  --color-border: #e6e2d8;
+  --color-foreground: #0b1124;
+  --color-muted-foreground: #475069;
+  --color-border: #e2ddd1;
 
-  --color-primary: #1b2550;
+  --color-primary: #1e40af;
   --color-primary-foreground: #ffffff;
-  --color-accent: #a9822e;
-  --color-accent-soft: #f4ecd9;
-  --color-success: #0e7a57;
+  --color-accent: #a87412;
+  --color-accent-soft: #fbf1dc;
+  --color-success: #047857;
   --color-success-foreground: #ecfdf5;
-  --color-warning: #b26a00;
+  --color-warning: #b45309;
   --color-warning-foreground: #451a03;
-  --color-danger: #b42318;
+  --color-danger: #c81e1e;
   --color-danger-foreground: #fef2f2;
 
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
@@ -47,7 +47,8 @@ body {
   font-family: var(--font-sans);
   color: var(--color-foreground);
   background:
-    radial-gradient(1200px 420px at 70% -120px, rgba(169, 130, 46, 0.07), transparent 70%),
+    radial-gradient(1100px 420px at 75% -140px, rgba(30, 64, 175, 0.08), transparent 70%),
+    radial-gradient(900px 360px at 10% -120px, rgba(168, 116, 18, 0.07), transparent 70%),
     var(--color-background);
   background-attachment: fixed;
   font-feature-settings: 'cv11', 'ss01';
@@ -102,5 +103,5 @@ input[type='number'] {
 }
 /* Mute the OSM basemap into a quiet, warm grey so the navy route and gold markers lead. */
 .leaflet-tile-pane {
-  filter: grayscale(1) sepia(0.12) brightness(1.06) contrast(0.88);
+  filter: saturate(0.6) brightness(1.03) contrast(0.96);
 }
