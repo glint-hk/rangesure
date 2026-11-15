@@ -12,12 +12,11 @@ live deployment, and usability by a NON-technical person. The authoritative spec
 root's parent.
 
 **Recalibration note:** live verification found the deck's original Mumbai→Pune numbers (148 km,
-0.82 kWh/km, expressway) don't match reality — ORS's `driving-hgv` profile routes via the old
-ghat road (165 km, ~2,000 m of climbing), giving ~1.06 kWh/km PHYSICS estimate (the number
-actually shown to the user is the learned-calibrated figure on top of that — see Calibration
-layer below). The app was NOT tuned to fake the deck's numbers; the deck should be updated to
-the real ones instead (slide 9 update pending). See the CALIBRATION comment in `config.js` and
-`DriverView.jsx` for the current live baseline.
+0.82 kWh/km, expressway) don't match reality — ORS's `driving-hgv` profile routes via the ghat
+road (now 156 km, ~1,300 m of climbing after elevation smoothing), giving a ~0.93 kWh/km PHYSICS
+estimate on a mild day with 4,000 kg (≈0.95 calibrated). Earlier figures (165 km, ~1.06 physics,
+~2,000 m climbing) predate elevation smoothing and direction-aware wind, both accuracy fixes. The app
+is NOT tuned to fake any number. See `CALIBRATION_TARGET_KWH_PER_KM` in `DriverView.jsx`.
 
 ## Stack
 - Next.js App Router, JavaScript (NOT TypeScript). Deployed on Vercel.
@@ -45,7 +44,16 @@ the real ones instead (slide 9 update pending). See the CALIBRATION comment in `
   - Google Gemini (LLM trip what-if, same model)                        -> app/api/ask
 - Env vars are SERVER-ONLY (no NEXT_PUBLIC_ prefix): ORS_KEY, OCM_KEY, GEMINI_API_KEY.
 - The energy model (lib/energyModel.js) is PURE (no fetch) and runs client-side, as are
-  lib/segments.js, lib/scenarios.js, lib/calibration.js, and lib/governance.js.
+  lib/segments.js, lib/scenarios.js, lib/calibration.js, lib/governance.js, lib/chargingPlan.js and
+  lib/tripEngine.js. **`lib/tripEngine.js`'s `computeTrip()` is the ONE trip pipeline** (segments →
+  best/expected/worst physics → calibration → energy breakdown) used by BOTH Plan Trip and Fleet, so
+  the same route gives the same numbers on both screens. Don't fork the maths into a view.
+- All seven views stay MOUNTED (hidden with the `hidden` attribute) in app/page.js so a planned trip,
+  fleet run or charger search survives tab switches. Views get `onNavigate(key)` and `active` props;
+  anything that measures its container (recharts) renders only when `active`. RouteMap re-measures
+  via a ResizeObserver when its tab becomes visible.
+- Explanations everywhere use `components/ui/info-hint.jsx` (`InfoHint`): an (i) popover that opens on
+  hover (mouse only) AND on tap, so hints work on phones. Every result number carries one.
 - Three client-side Context providers, wrapping the whole app in app/page.js:
   - `lib/settingsContext.jsx` (localStorage-backed) — vehicle params, default tariff, DC
     charger power (kW), and the Route Guarantee model's `margin`/`disruptionCostPerKm`
@@ -73,44 +81,51 @@ Trip, Guarantee, Trips, Fleet, Charging, Reports, Settings.
    "Mumbai → Pune" (the board's reference trip on the demo-default Ultra E.9 — payload 4000 kg,
    battery 100%, tariff 8.5, all fixed regardless of Settings changes; battery is 100%, not the
    deck's original 80%, because the real live route only leaves a thin margin at full charge —
-   see the recalibration note above) and "Nashik run (needs charge)" (a longer, lower-battery
-   trip meant to trigger a charging stop in the demo). Both presets fill the fields AND run the
+   see the recalibration note above) and "Nashik run (needs charge)" (starts at 40% — low enough to need
+   charging, high enough to reach the chargers near Mumbai/Thane; at 20% the reserve is hit by km 23). Both presets fill the fields AND run the
    trip immediately. "Optimise Trip" runs a manually-entered trip.
 
-   Output: route on map with a "Recommended route · N km" badge; a hero VerdictCard (status
-   icon/badge, headline, confidence range, the P1-2 repeatability gauge, and — for needs-charge
-   trips — the P1-3 charge-time/delivery-window line); six MetricTile result cards in this exact
-   order/wording — Trip distance (km) · Energy use (kWh/km) · Predicted full range (km) ·
-   Energy cost (₹/km) · Arrival battery (%) · Charging need ("No stop" or "Stop at <charger>")
-   — then a "YOUR TRIP PLAN" panel: the physics→calibrated kWh/km line + what-it-learned
-   takeaway (P1-1), 2-4 LLM guidance bullets, an Assumptions popover, an AI model coefficients
-   popover, and an Ask box for natural-language what-ifs. Never show a bare "±12%" — confidence
-   is always the 85–91% range (widened when the governance fallback is active — see below).
-   Every successful calculation is logged to trip history via `useTripHistory().addTrip()`
-   (using the CALIBRATED numbers, not raw physics), and pushed to `lib/lastTripContext.jsx`
-   for the Guarantee view. When the selected vehicle is flagged by the cohort-anomaly check
-   (see below), a `CohortAnomalyBanner` renders above the VerdictCard.
+   Fetch flow (`handleCalculate`): route first; then reverse-geocode of the biggest climb, ONE
+   batched weather call (4 points) and a corridor charger search, in parallel; everything is
+   committed in ONE `setRun()` so nothing renders half-finished. A `runId` ref drops superseded
+   runs. A 3-step progress card shows while it works. Results are `useMemo`-derived from `run` +
+   inputs, so vehicle/load/battery/tariff edits recompute instantly with no refetch; editing
+   origin/destination shows a "you changed the route" notice until re-run.
+
+   Output: route on map ("Truck route · N km" badge, legend, planned stops highlighted); a hero
+   VerdictCard (plain-language headline, a High/Medium/Low CONFIDENCE badge from governance, the
+   reasons when not High, a bad-day→good-day arrival-battery bar with the reserve marked for
+   no-stop trips, a numbered stop list for charging trips, the biggest-climb callout, and driving +
+   charging time checked against the optional deadline); six MetricTile cards in this order —
+   Trip distance · Energy use (kWh/km) · Range on a full battery · Energy cost (₹/km) · Battery on
+   arrival (after planned charging) · Charging stops — each with an InfoHint; then a "Next step"
+   link to Guarantee, and the cohort banner BELOW the numbers (it's not about this trip). A "How we
+   worked it out" panel holds the physics→calibrated line, the `EnergyBreakdown` (air resistance,
+   tyres, climbing net of regen, AC, learned correction — always summing to the trip total), LLM
+   driver notes, Assumptions and AI-model popovers, and the Ask box. NEVER show a fixed confidence
+   percentage — the old "85–91%" was a hardcoded constant and has been removed. Every run is logged
+   to trip history with `outcome` ('no-stop' | 'stops' | 'not-possible'), stop count and the
+   POST-CHARGING arrival %, and pushed to `lib/lastTripContext.jsx` (incl. payload) for Guarantee.
 2. **Guarantee** — the commercial hero screen (see Route Guarantee section below). Reuses the
    last Plan Trip calculation's numbers via `lib/lastTripContext.jsx`; shows an empty state
    ("compute a trip on Plan Trip first") if nothing has been run yet.
 3. **Trips** — table of trip history (most recent first), "Clear history" button, empty
    state if none logged yet.
-4. **Fleet view** — a dashboard strip (total kWh, avg ₹/km, trips needing a charge stop) + an
-   insight line when any route is MARGINAL, + a "Guarantee book" roll-up strip (see Route
-   Guarantee section), + a sortable table of 6 sample trucks/trips. Each row stores its route
-   segments so a per-row vehicle Select recomputes feasibility (and its guarantee price) live,
-   with no refetch. Status is three-tier: Feasible (green) / Marginal (amber, arrival within 5
-   points of the reserve buffer) / Infeasible (red). A header-level vehicle Select sets the
-   default for all rows on the next "Run fleet".
+4. **Fleet view** — runs 6 sample trucks through `computeTrip()` (same engine as Plan Trip, with
+   live weather; payload capped at the vehicle's max), then a dashboard strip (energy for all runs,
+   distance-weighted avg ₹/km, how many need a charge stop) + a "Guarantee book" strip + a sortable
+   table. Each row stores its route + weather so a per-row vehicle Select recomputes live. Status:
+   Comfortable / Tight (within 5 pts of the reserve) / Needs a charge stop — never "Infeasible", and
+   arrival never shows a negative % ("Runs out").
 5. **Charging** — search a city (geocoded via app/api/geocode), shows nearby charging
    stations (~50 km) on a map plus a list. Reuses RouteMap.jsx in its chargers-only mode
    (no route line).
 6. **Reports** — aggregate stats (total distance/energy/cost, feasibility rate) computed
    from trip history. Empty state if none logged yet.
-7. **Settings** — edit every vehicle param, the default tariff, the DC fast-charge power
-   (kW), and the Route Guarantee model's margin/disruption-cost assumptions; changes apply
-   immediately to Plan Trip, Fleet, and Guarantee, and persist to localStorage.
-   "Reset to defaults" restores the config.js Ultra E.9 preset.
+7. **Settings** — grouped into Vehicle (with a "vehicle being edited" picker and an edited-from-
+   defaults notice), Electricity and charging (tariff, the truck's max charging power), and
+   Guarantee pricing; every field has an InfoHint. Changes apply immediately everywhere and persist
+   to localStorage. "Reset everything to defaults" (confirmed) restores the e-ICV 11T preset.
 
 ## Vehicle presets (config.js)
 `VEHICLES` is an array of 4 generic Indian e-truck class presets (e-SCV 1.5T, e-ICV 11T, e-Rigid 28T,
@@ -121,10 +136,11 @@ specs-citation tooltip). `SHARED_PARAMS` (`rho`, `g`, `reserve_pct`) apply acros
 `DEFAULT_VEHICLE` = e-ICV 11T, matching board slide 9.
 
 ## The energy model (lib/energyModel.js)
-Formulas: F_roll=Crr·m·g, F_aero=0.5·ρ·Cd·A·v_air², F_grade=m·g·sinθ (grade clamped ±30% —
+Formulas: F_roll=Crr·m·g (Crr ×1.15 on wet road), F_aero=0.5·ρ·Cd·A·v_air² (v_air = speed + the
+segment's headwind COMPONENT), F_grade=m·g·sinθ (grade clamped ±30% —
 computed once in lib/segments.js's `grade_pct` and reused here, so climb detection and the
 tractive-force calc always agree), drivetrain loss on positive tractive force / regen recovery
-on negative, plus HVAC/aux load over segment time. Outputs include kWh_per_km,
+on negative, plus HVAC/aux load over segment time. Also returns `breakdown_kwh` {rolling, aero, climbing (net of regen), aux}. Outputs include kWh_per_km,
 predicted_full_range_km (= battery_kWh / kWh_per_km), and arrival_soc_pct (= (battery_kWh·
 battery_pct/100 − total_kWh) / battery_kWh × 100). `feasible` is `arrival_soc_pct >=
 reserve_pct` (10% reserve buffer, not a bare 0%). Keep the model pure (no fetch) and keep each
@@ -132,21 +148,22 @@ physics line commented with the formula it implements. This is the PHYSICS basel
 Calibration layer below for the number actually shown/used for the verdict.
 
 **Calibration target:** the Mumbai→Pune preset is the board's reference trip and its PHYSICS
-estimate reads ~1.06 kWh/km live from the real route at 100% battery (the displayed calibrated
-number is a few % different — see below). DriverView console.logs the computed physics kWh/km
+estimate reads ~0.93 kWh/km live (weather-dependent; the displayed calibrated number is ~2% higher). DriverView console.logs the computed physics kWh/km
 on every calculation and flags drift >0.05 from that baseline for this preset. Cd, Crr, P_aux,
 and eta_regen in config.js are marked as the tuning knobs — nudge those, never hardcode the
 output numbers themselves.
 
 ## Segment intelligence (lib/segments.js)
-`buildSegments()` turns ORS route geometry into per-segment `{ distance_m, delta_h, grade_pct,
-lat, lon, at_km, temp_factor, headwind_ms }`. Weather is sampled at 4 points along the route
-(start/~1/3/~2/3/end, each fetched independently so one failure doesn't null the rest) and each
-segment gets the nearest sample by distance, instead of one uniform value. `findSteepestClimb()`
-finds the steepest SUSTAINED run (≥300 m above a 2% grade threshold, ranked by average grade
-over the run) — not a single spiky segment — and DriverView reverse-geocodes its midpoint via
-app/api/reverse-geocode for a real place name, deriving a climb-specific eco-speed
-(`climbSafeSpeedKmh`) scaled down from the route average by grade severity.
+`buildSegments()` first SMOOTHS elevation (300 m distance-weighted moving average — raw SRTM noise
+invented ~1,300 m of "climbing" on flat Delhi→Jaipur), then turns geometry into per-segment
+`{ distance_m, delta_h, grade_pct, heading_deg, lat, lon, at_km, temp_factor, headwind_ms, wet }`.
+Weather comes from ONE batched Open-Meteo call for 4 points (start/~1/3/~2/3/end) including wind
+DIRECTION; each segment takes the nearest sample and computes its own headwind component
+(`wind · cos(windFrom − heading)`) — full wind speed is never treated as a headwind. app/api/weather
+derives a continuous HVAC `temp_factor` (none in 16–28 °C, +3%/°C beyond, cap +60%) and a `wet` flag
+(≥0.5 mm/h). `findSteepestClimb()` returns the BIGGEST sustained climb (most metres gained, grade
+>1.5%, tolerating ≤400 m dips inside a ghat, ≥40 m rise) — shown as "Biggest climb: X km rising Y m",
+reverse-geocoded for a place name, with a `climbSafeSpeedKmh` hint.
 
 ## Learned calibration (data/tripHistory.js, lib/calibration.js)
 `data/tripHistory.js` generates 1,500 deterministic synthetic past-trip records (seeded PRNG —
@@ -169,23 +186,30 @@ penalty, a headwind, +10% payload uncertainty). All three get the same calibrati
 "Repeatability — arrival battery" gauge on VerdictCard.
 
 ## Governance red-line (lib/governance.js)
-`assessConfidence()` never lets VerdictCard show a confident green when: (a) DEGRADED — any
-upstream data source failed (weather, chargers, elevation missing from the route geometry), or
-(b) UNCERTAIN — the EXPECTED case looks feasible but the real WORST-case scenario (from
-lib/scenarios.js) would breach the reserve buffer. In either case the verdict flips to an amber
-"Low confidence — manual planning advised" state with the real reasons listed, a widened
-confidence band, a "Safe fallback active" badge, and the raw numbers still shown below — never
-hidden. Every calculation logs `[Governance] { inputs, model_version, confidence, verdict,
-fallback_active, reasons }` to the console as a stand-in trip log.
+`assessConfidence()` returns a confidence LEVEL (no made-up percentage): `high` (all data loaded and
+even the worst case stays above the reserve), `medium` (worst case would breach the reserve), `low`
+(weather/chargers/elevation missing). Anything but `high` turns the verdict amber with the reasons
+listed and all numbers still shown; a degraded needs-stop trip still shows its stop plan.
+`CONFIDENCE_COPY` holds the user-facing wording. Every calculation logs `[Governance]` to the console.
+
+## Charging planner (lib/chargingPlan.js)
+Snaps OCM chargers within 10 km of the route, keeps the fastest per 15 km stretch (≤16), and
+EXHAUSTIVELY searches ordered combinations of up to 4 stops, simulating each: battery at each
+charger's real position minus the detour, charge just enough to reach the next stop when a faster
+charger lies ahead (else enough to finish with reserve + 5% cushion, capped at 90%), charge time at
+min(Settings max kW, station kW) with half rate above 80%, +15 min overhead per stop. Picks the
+fastest valid plan. Infeasible plans report `reserve_hit_km`. app/api/charging does a corridor search
+(`points` every ~30 km, 15 km radius, merged/deduped), drops non-operational stations, and returns
+`max_power_kw`, `dc`, `town`.
 
 ## Route Guarantee (lib/guarantee.js, data/corridors.js) — the commercial layer
-Turns the trip engine's confidence band into a priced commitment: "Tata can commit ₹X/km on
-this corridor with a Y% completion guarantee." `lib/guarantee.js`'s `priceGuarantee()` is an
+Turns the trip engine's best/worst band into a priced commitment: "a guaranteed ₹X/km on this
+corridor at a Y% guarantee level" (the real energy cost stays under the price on ~Y of 100 trips). `lib/guarantee.js`'s `priceGuarantee()` is an
 explicitly **illustrative, non-actuarial** model (implemented verbatim from
 `../DTAI_RangeSure_Route_Guarantee.md`): the best/worst scenario band sizes an uncertainty
 `sigma0`, scaled by `sqrt(baseline_trips / corridor_trips)` — MORE corridor trips means LESS
 uncertainty (the "data flywheel"). An Acklam inverse-normal quantile turns the guarantee % into
-a z-score priced against that sigma; a residual disruption load and Tata's margin stack on top.
+a z-score priced against that sigma; a residual disruption load and the operator's margin stack on top.
 `underwritable` is false when a corridor has under 100 logged trips or the buffer would exceed
 3x the expected cost — the Guarantee view shows an honest "not yet underwritable" state instead
 of a price in that case, never a fabricated number. `data/corridors.js` is a synthetic,
@@ -195,13 +219,15 @@ history. `estimateTripsToUnderwrite()` binary-searches how many more corridor tr
 corridor would need to flip underwritable, used by the Fleet Guarantee book's insight line.
 
 **Guarantee view** (`components/GuaranteeView.jsx`) reuses the last Plan Trip result via
-`lib/lastTripContext.jsx` — it does not run its own trip calculation. Hero card shows the
-committed ₹/km and guarantee % badge; a 90–99.5% `Slider` live-recomputes the price; a
+`lib/lastTripContext.jsx` (a "Based on your last planned trip" line names it) — it does not run its own
+trip calculation. "Risk buffer" everywhere means risk + disruption load, EXCLUDING margin. Hero card shows the
+committed ₹/km and guarantee-level badge; a 90–99.5% `Slider` live-recomputes the price; a
 breakdown bar (Energy cost | Risk buffer | Margin) sums EXACTLY to the committed price (the
 `risk_cost_per_km`/`disruption_load_per_km`/`margin_per_km` fields on `priceGuarantee()`'s
 return value are additive by construction, so this always reconciles). `components/MoatPanel.jsx`
-sweeps `corridor_trips = [0, 100, 500, 1500, 10000, 50000]` at the SAME trip/guarantee level and
-plots the buffer collapsing as trip history grows (recharts line chart) — the visual argument
+sweeps corridor trips 100→50,000 (log x-axis, plus this corridor's own count highlighted) at the SAME
+trip/guarantee level and plots the risk buffer collapsing as history grows (recharts); below 100
+trips no price can be quoted — the visual argument
 for why a new entrant (0 trips) literally cannot underwrite.
 
 **Fleet Guarantee book** (in `FleetView.jsx`): each fleet row now also runs
@@ -222,11 +248,10 @@ degradation"). Offsets are hardcoded per vehicle model in `data/cohort.js` (Ultr
 seeded to flag, by design, since it's the default Plan Trip vehicle) — synthetic demo data,
 labeled as such in the UI, not a real degradation model.
 
-## Charge time + delivery window (P1-3, in DriverView)
-For needs-charge trips: `kWh_needed` closes the gap from arrival SOC up to the reserve buffer;
-`charge_minutes = kWh_needed / chargerKW * 60` using Settings' DC fast-charge power (default
-120 kW). The optional delivery-window (hours) input compares route time + charge time against
-the window and shows "On time" or "Risks delivery window by ~N min" on VerdictCard.
+## Trip time + deadline (in DriverView)
+Driving time (ORS duration + detours at 40 km/h) plus the charging plan's minutes, shown on the
+VerdictCard for every workable trip; the optional deadline (hours) shows "Within your N h window" or
+"Misses your N h window by ~M min".
 
 ## Guidance & Ask layers (app/api/guidance, app/api/ask)
 Both LLM (Gemini) endpoints may ONLY reason over numbers the physics/calibration/scenario layers
@@ -239,7 +264,8 @@ the UI must never white-screen or invent a number waiting on Gemini.
 
 ## Non-negotiables
 - Usable by a non-technical person. Clean, obvious UI. Mobile-friendly (tested at 375px/1440px).
-- Always show the confidence range and the limitations note — never hide them.
+- Always show the confidence level, the bad-day→good-day arrival range (or the stop plan) and the
+  limitations — never hide them, and never show a fixed/fabricated confidence percentage.
 - Never show a confident green verdict when data is degraded or the worst case is uncertain —
   the governance red-line (see above) is a demo highlight, not an edge case to skip.
 - Every number must trace to a KPI: ₹/km, range confidence, uptime, EV-fleet conversion.

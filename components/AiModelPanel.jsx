@@ -19,24 +19,25 @@ export default function AiModelPanel() {
     <div className="relative">
       <button
         type="button"
-        className="flex items-center gap-1.5 text-left text-xs text-muted-foreground hover:text-foreground"
+        className="flex items-center gap-1.5 text-left text-xs font-medium text-primary hover:underline"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
       >
         <BrainCircuit className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        AI model — what it learned
+        What the AI learned
       </button>
       {open && (
         <div
           role="dialog"
           aria-label="AI model coefficients"
-          className="absolute bottom-full right-0 z-10 mb-2 w-[min(340px,90vw)] rounded-xl border border-border bg-surface-raised p-4 shadow-2xl"
+          className="absolute bottom-full right-0 z-20 mb-2 w-[min(360px,90vw)] rounded-xl border border-border bg-surface p-4 shadow-[0_16px_40px_-12px_rgba(18,23,43,0.3)]"
         >
           <div className="mb-1 text-sm font-semibold text-foreground">Learned correction model</div>
           <p className="mb-2.5 text-[11px] leading-relaxed text-muted-foreground">
-            A linear regression fit on {CALIBRATION_TRAINED_ON.toLocaleString()} synthetic past
-            trips (stand-in for real fleet telematics outcomes), mapping trip features to a correction
-            factor applied on top of the physics estimate.
+            A simple, transparent model (linear regression) fitted on {CALIBRATION_TRAINED_ON.toLocaleString()}{' '}
+            past trips. It learns how much real energy use differed from the physics estimate, and predicts a
+            correction factor for each new trip. A positive weight means that feature pushes energy use up. The
+            trip history is simulated here, standing in for a real fleet&apos;s telematics.
           </p>
           <table className="mb-1 w-full border-collapse text-xs">
             <tbody>

@@ -1,22 +1,30 @@
 'use client';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { Loader2, AlertCircle, Info, MapPinned, Gauge, ShieldCheck, Sparkles, ArrowRight } from 'lucide-react';
+import {
+  Loader2,
+  AlertCircle,
+  MapPinned,
+  Gauge,
+  ShieldCheck,
+  Sparkles,
+  ArrowRight,
+  Check,
+  RefreshCw,
+} from 'lucide-react';
 import { DEFAULT_TARIFF, VEHICLES } from '@/config';
-import { estimateTrip } from '@/lib/energyModel';
 import { buildSegments, findSteepestClimb } from '@/lib/segments';
-import { runScenarios } from '@/lib/scenarios';
-import { assessConfidence } from '@/lib/governance';
-import { planChargingStops, chargeMinutesForStop } from '@/lib/chargingPlan';
-import { calibrate, explainCalibration, CALIBRATION_TRAINED_ON } from '@/lib/calibration';
+import { computeTrip, weatherPoints, chargerSearchPoints } from '@/lib/tripEngine';
+import { assessConfidence, CONFIDENCE_COPY } from '@/lib/governance';
+import { planChargingStops } from '@/lib/chargingPlan';
+import { fmtNum } from '@/lib/format';
 import { useSettings } from '@/lib/settingsContext';
 import { useTripHistory } from '@/lib/tripHistoryContext';
 import { useLastTrip } from '@/lib/lastTripContext';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
+import { InfoHint } from '@/components/ui/info-hint';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/components/ui/tooltip';
 import PlaceAutocomplete from './PlaceAutocomplete';
 import VerdictCard from './VerdictCard';
 import ResultsPanel from './ResultsPanel';
@@ -25,12 +33,12 @@ import AssumptionsPopover from './AssumptionsPopover';
 import AiModelPanel from './AiModelPanel';
 import AskBox from './AskBox';
 import CohortAnomalyBanner from './CohortAnomalyBanner';
+import EnergyBreakdown from './EnergyBreakdown';
 
 const RouteMap = dynamic(() => import('./RouteMap'), { ssr: false });
 
-// The reference trip shown to the board (slide 9). Starts at 100% battery — the real
-// ORS driving-hgv route (165 km via the old ghat road, not the 148 km expressway
-// assumption) arrives with only ~12% at a full charge, so 80% would need a stop too.
+// The reference trip shown to the board. Starts at 100% battery: on the real truck route
+// the arrival margin at 80% is too thin, so a lower start would need a stop.
 const HERO_PRESET = {
   label: 'Mumbai → Pune',
   origin: 'Mumbai',
@@ -40,33 +48,38 @@ const HERO_PRESET = {
   tariff: DEFAULT_TARIFF,
 };
 
-// A longer, lower-battery trip that should trip the charging-stop path in the demo.
+// A longer, lower-battery trip that exercises the charging-stop planner.
 // Payload must never exceed the demo-default e-ICV 11T's payload_max_kg (4,000).
 const NASHIK_PRESET = {
   label: 'Nashik run (needs charge)',
   origin: 'Mumbai',
   destination: 'Nashik',
   payload: 4000,
-  battery: 20,
+  battery: 40,
   tariff: DEFAULT_TARIFF,
 };
 
-// Recalibrated from the deck's original 0.82 kWh/km target after live verification:
-// ORS's driving-hgv profile (the only profile this project's ORS key can access) routes
-// Mumbai->Pune via the old ghat road, not the expressway the deck assumed — 165 km with
-// ~2,000 m of real climbing, vs. the deck's 148 km. ~1.06 kWh/km is the honest live
-// baseline for THIS route; Cd/Crr/P_aux/eta_regen in config.js are still there to tune if
-// the live number drifts from that going forward (e.g. after an ORS/OSM data change).
-const CALIBRATION_TARGET_KWH_PER_KM = 1.06;
+// Live physics baseline for the Mumbai→Pune preset on the e-ICV 11T (4,000 kg, mild
+// weather), re-measured after elevation smoothing and direction-aware wind were added
+// (ORS truck route now 156 km). Logged as a drift check only — the model is never tuned
+// to hit it; Cd/Crr/P_aux/eta_regen in config.js are the knobs if real data disagrees.
+const CALIBRATION_TARGET_KWH_PER_KM = 0.93;
 const CALIBRATION_TOLERANCE = 0.05;
 
-// Weather is sampled at these fractions of route distance (start, ~1/3, ~2/3, end)
-// instead of one midpoint, so temp/headwind vary segment-to-segment on long routes.
-const WEATHER_SAMPLE_FRACTIONS = [0, 1 / 3, 2 / 3, 1];
+// Average speed a truck does on a short detour to a charger and back.
+const DETOUR_SPEED_KMH = 40;
 
-// Tracks the `lg` breakpoint (matches Tailwind's default 1024px) so the "Your trip
-// plan" panel can render once, in the correct DOM location for the current layout,
-// instead of mounting two copies (which would double-fire the guidance/ask fetches).
+const STAGES = [
+  { key: 'route', label: 'Finding the route a heavy truck can take' },
+  { key: 'details', label: 'Reading terrain, live weather and chargers along it' },
+  { key: 'model', label: 'Running the physics model and AI calibration' },
+];
+
+const INPUT_CLASS =
+  'h-10 w-full rounded-lg border border-border bg-surface px-3 text-[13.5px] text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20';
+
+// Tracks the `lg` breakpoint so the "How we worked it out" panel renders once, in the
+// right place for the layout (two mounted copies would double-fire the guidance fetch).
 function useIsDesktop() {
   const [isDesktop, setIsDesktop] = useState(false);
   useEffect(() => {
@@ -79,33 +92,75 @@ function useIsDesktop() {
   return isDesktop;
 }
 
-// Derives a safe eco-speed for the steepest climb — scaled down from the route's
-// average speed by how severe the grade is, floored so it never suggests crawling.
+// A steady speed for the steepest climb — scaled down from the route's average speed by
+// how severe the grade is, floored so it never suggests crawling.
 function climbSafeSpeedKmh(routeAvgKmh, gradePct) {
   if (!routeAvgKmh) return null;
   const reductionPct = Math.max(10, Math.min(45, gradePct * 4));
   return Math.max(30, Math.round(routeAvgKmh * (1 - reductionPct / 100)));
 }
 
-// Re-derives the trip's headline numbers from a (possibly calibrated) kWh/km value —
-// shared by the main result and each best/expected/worst scenario so they all use
-// exactly the same arithmetic.
-function deriveFromKwhPerKm(kWh_per_km, dist_km, batteryPct, tariffVal, vehicleParams) {
-  const total_kWh = kWh_per_km * dist_km;
-  const battery_kWh = vehicleParams.battery_kWh > 0 ? vehicleParams.battery_kWh : 1;
-  const predicted_full_range_km = kWh_per_km > 0 ? battery_kWh / kWh_per_km : Infinity;
-  const arrival_soc_pct = ((battery_kWh * (batteryPct / 100) - total_kWh) / battery_kWh) * 100;
-  return {
-    kWh_per_km,
-    total_kWh,
-    predicted_full_range_km,
-    arrival_soc_pct,
-    cost_per_km: kWh_per_km * tariffVal,
-    feasible: arrival_soc_pct >= vehicleParams.reserve_pct,
-  };
+async function postJson(url, body) {
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `${url} failed`);
+  return data;
 }
 
-export default function DriverView() {
+function FieldLabel({ children, hint }) {
+  return (
+    <span className="flex items-center gap-1 text-[12px] font-medium text-foreground">
+      {children}
+      {hint && <InfoHint label={`About ${children}`}>{hint}</InfoHint>}
+    </span>
+  );
+}
+
+function ProgressCard({ stage }) {
+  const activeIdx = STAGES.findIndex((s) => s.key === stage);
+  return (
+    <Card className="p-5">
+      <div className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">Working it out</div>
+      <ol className="space-y-3">
+        {STAGES.map((s, i) => {
+          const done = i < activeIdx;
+          const active = i === activeIdx;
+          return (
+            <li key={s.key} className="flex items-center gap-3 text-[13.5px]">
+              <span
+                className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full border ${
+                  done
+                    ? 'border-success bg-success text-white'
+                    : active
+                    ? 'border-primary text-primary'
+                    : 'border-border text-muted-foreground'
+                }`}
+              >
+                {done ? (
+                  <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                ) : active ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />
+                ) : (
+                  <span className="tabular text-[11px]">{i + 1}</span>
+                )}
+              </span>
+              <span className={active ? 'font-medium text-foreground' : done ? 'text-foreground' : 'text-muted-foreground'}>
+                {s.label}
+              </span>
+            </li>
+          );
+        })}
+      </ol>
+      <p className="mt-4 text-xs text-muted-foreground">Usually takes 5–15 seconds. Accuracy comes before speed.</p>
+    </Card>
+  );
+}
+
+export default function DriverView({ onNavigate }) {
   const { vehicle, tariff: settingsTariff, selectVehicle, chargerKW } = useSettings();
   const { addTrip } = useTripHistory();
   const { setLastTrip } = useLastTrip();
@@ -117,247 +172,128 @@ export default function DriverView() {
   const [battery, setBattery] = useState(HERO_PRESET.battery);
   const [tariff, setTariff] = useState(settingsTariff);
   const [deliveryWindow, setDeliveryWindow] = useState(''); // optional, hours
-
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [route, setRoute] = useState(null);
-  const [weatherSamples, setWeatherSamples] = useState([]); // [{ at_km, temp_factor, headwind_ms }]
-  const [primaryWeather, setPrimaryWeather] = useState(null); // one sample, for the guidance summary
-  const [climbInfo, setClimbInfo] = useState({ notable_climb: null, recommended_speed_kmh: null });
-  const [chargers, setChargers] = useState([]);
-  const [result, setResult] = useState(null);
-  const [weatherWarning, setWeatherWarning] = useState(false);
-  const [chargingWarning, setChargingWarning] = useState(false);
-  const [elevationMissing, setElevationMissing] = useState(false);
   const [payloadClamped, setPayloadClamped] = useState(false);
 
-  // SettingsProvider loads its saved tariff from localStorage in an effect, which runs
-  // AFTER this component's first render — so the useState above can seed from the stale
-  // pre-load default. Re-sync once settings finish loading, but only before the user has
-  // run anything (don't clobber a manual edit mid-session).
+  const [loading, setLoading] = useState(false);
+  const [stage, setStage] = useState(null);
+  const [error, setError] = useState(null);
+  // Everything fetched for the current trip, committed in ONE state update so the page
+  // never renders a half-finished result (e.g. a verdict before chargers have arrived).
+  const [run, setRun] = useState(null);
+  const runId = useRef(0);
+
+  // SettingsProvider loads its saved tariff from localStorage after the first render, so
+  // re-sync once it lands — but only before a trip has been run (never clobber an edit).
   useEffect(() => {
-    if (!route) setTariff(settingsTariff);
+    if (!run) setTariff(settingsTariff);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settingsTariff]);
 
-  // Climb detection and its recommended speed are purely route geometry — independent
-  // of payload/battery/tariff/vehicle — so they're computed once per route fetch (see
-  // handleCalculate) and just attached here on every recompute, not re-derived.
-  const recompute = (originVal, destinationVal, routeData, samples, payloadKg, batteryPct, tariffVal, climb) => {
-    const segments = buildSegments(routeData.coordinates, routeData.distance_m, routeData.duration_s, samples);
-    // Best/expected/worst (P1-2): "expected" is the same physics run as before; best
-    // and worst vary temp/headwind/payload to show a real repeatability band instead
-    // of a flat +/-band. All three get the same learned calibration factor below.
-    const { best, expected, worst } = runScenarios({
-      segments,
-      payloadKg,
-      battery_pct: batteryPct,
-      tariff: tariffVal,
-      params: vehicle,
-    });
-    const r = expected;
-
-    console.log(`[EnergyModel] ${originVal} -> ${destinationVal}: physics kWh/km = ${r.kWh_per_km.toFixed(3)}`);
-    const isHeroPreset =
-      originVal.trim().toLowerCase() === HERO_PRESET.origin.toLowerCase() &&
-      destinationVal.trim().toLowerCase() === HERO_PRESET.destination.toLowerCase();
-    if (isHeroPreset) {
-      const drift = Math.abs(r.kWh_per_km - CALIBRATION_TARGET_KWH_PER_KM);
-      console.log(
-        `[Calibration target] Mumbai->Pune physics target ${CALIBRATION_TARGET_KWH_PER_KM} kWh/km, got ${r.kWh_per_km.toFixed(
-          3
-        )} (drift ${drift.toFixed(3)}).` +
-          (drift > CALIBRATION_TOLERANCE
-            ? ' Drift exceeds 0.03 — tune Cd/Crr/P_aux/eta_regen in config.js.'
-            : ' Within tolerance.')
-      );
+  const handleCalculate = async (override) => {
+    const trip = {
+      origin: (override?.origin ?? origin).trim(),
+      destination: (override?.destination ?? destination).trim(),
+      payload: override?.payload ?? payload,
+      battery: override?.battery ?? battery,
+      tariff: override?.tariff ?? tariff,
+    };
+    if (!trip.origin || !trip.destination) {
+      setError('Enter both a starting point and a destination.');
+      return;
     }
 
-    // Learned calibration (P1-1): a small correction on top of the physics estimate,
-    // fit on synthetic trip history (lib/calibration.js). The calibrated number — not
-    // the raw physics one — drives the verdict/range/arrival-SOC math from here on.
-    const avg_gradient =
-      r.dist_km > 0 ? r.perSeg.reduce((a, s) => a + s.grade_pct * s.distance_m, 0) / (r.dist_km * 1000) : 0;
-    const avg_speed_kmh =
-      routeData.duration_s > 0 ? (routeData.distance_m / routeData.duration_s) * 3.6 : 50;
-    const sampleTemps = samples.map((s) => s.temp_c).filter((t) => Number.isFinite(t));
-    const temp_c = sampleTemps.length ? sampleTemps.reduce((a, t) => a + t, 0) / sampleTemps.length : 27;
-
-    const calibrationFeatures = { distance_km: r.dist_km, avg_gradient, payload_kg: payloadKg, temp_c, avg_speed_kmh };
-    const calibration_factor = calibrate(calibrationFeatures);
-
-    console.log(
-      `[Calibration] factor ${calibration_factor.toFixed(3)}: physics ${r.kWh_per_km.toFixed(
-        3
-      )} -> calibrated ${(r.kWh_per_km * calibration_factor).toFixed(3)} kWh/km`
-    );
-
-    // Same calibration factor applied to all three scenarios — it corrects a
-    // systematic bias in the physics model, not a specific day's conditions.
-    const calibrated = deriveFromKwhPerKm(best.kWh_per_km * calibration_factor, r.dist_km, batteryPct, tariffVal, vehicle);
-    const calibratedExpected = deriveFromKwhPerKm(r.kWh_per_km * calibration_factor, r.dist_km, batteryPct, tariffVal, vehicle);
-    const calibratedWorst = deriveFromKwhPerKm(worst.kWh_per_km * calibration_factor, r.dist_km, batteryPct, tariffVal, vehicle);
-
-    return {
-      ...r,
-      ...climb,
-      physics_kWh_per_km: r.kWh_per_km,
-      ...calibratedExpected,
-      calibration_factor,
-      calibration_features: calibrationFeatures,
-      calibration_note: explainCalibration(calibrationFeatures),
-      calibration_trained_on: CALIBRATION_TRAINED_ON,
-      scenarios: { best: calibrated, expected: calibratedExpected, worst: calibratedWorst },
-    };
-  };
-
-  // Accepts an optional override so preset buttons can fill fields and run in one click
-  // without waiting on a state update to land first.
-  const handleCalculate = async (override) => {
-    const tripOrigin = override?.origin ?? origin;
-    const tripDestination = override?.destination ?? destination;
-    const tripPayload = override?.payload ?? payload;
-    const tripBattery = override?.battery ?? battery;
-    const tripTariff = override?.tariff ?? tariff;
-
+    const id = ++runId.current;
+    const stale = () => id !== runId.current;
     setLoading(true);
     setError(null);
-    setResult(null);
-    setRoute(null);
-    setWeatherSamples([]);
-    setPrimaryWeather(null);
-    setClimbInfo({ notable_climb: null, recommended_speed_kmh: null });
-    setChargers([]);
-    setWeatherWarning(false);
-    setChargingWarning(false);
-    setElevationMissing(false);
+    setRun(null);
+    setStage('route');
 
     try {
-      const routeRes = await fetch('/api/route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ origin: tripOrigin, destination: tripDestination }),
-      });
-      const routeData = await routeRes.json();
-      if (!routeRes.ok) throw new Error(routeData.error || 'Route lookup failed.');
-      setRoute(routeData);
-      setElevationMissing(routeData.coordinates.some((c) => c[2] == null));
-
-      const midIdx = Math.floor(routeData.coordinates.length / 2);
-      const [midLon, midLat] = routeData.coordinates[midIdx];
-
-      // Climb detection is pure route geometry — independent of weather/vehicle — so
-      // it runs once here, before any weather fetch, off a throwaway segment build.
-      const routeAvgKmh =
-        routeData.duration_s > 0 ? (routeData.distance_m / routeData.duration_s) * 3.6 : null;
-      const baseSegments = buildSegments(routeData.coordinates, routeData.distance_m, routeData.duration_s);
-      const climb = findSteepestClimb(baseSegments);
-
-      let climbResult = {
-        notable_climb: null,
-        recommended_speed_kmh: routeAvgKmh ? Math.round(routeAvgKmh) : null,
-      };
-      if (climb) {
-        let placeName = `Climb near km ${Math.round(climb.start_km)}`;
-        try {
-          const revRes = await fetch('/api/reverse-geocode', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lat: climb.lat, lon: climb.lon }),
-          });
-          const revData = await revRes.json();
-          if (revRes.ok && revData.label) placeName = revData.label;
-        } catch {
-          // Reverse geocoding failed — fall back to the km-marker name, still real data.
-        }
-        climbResult = {
-          notable_climb: { name: placeName, grade: `${climb.grade_pct.toFixed(1)}%` },
-          recommended_speed_kmh: climbSafeSpeedKmh(routeAvgKmh, climb.grade_pct),
-        };
+      const route = await postJson('/api/route', { origin: trip.origin, destination: trip.destination });
+      if (stale()) return;
+      if (!route.coordinates?.length || route.distance_m < 500) {
+        throw new Error('The start and destination are too close together to plan a truck trip.');
       }
-      setClimbInfo(climbResult);
+      setStage('details');
 
-      // Sample weather at start/~1/3/~2/3/end instead of one midpoint, so temp and
-      // headwind vary segment-to-segment on long routes. Each point is guarded
-      // independently — one failed sample doesn't null out the others.
-      const totalKm = routeData.distance_m / 1000;
-      const weatherPoints = WEATHER_SAMPLE_FRACTIONS.map((f) => {
-        const idx = Math.min(routeData.coordinates.length - 1, Math.round(f * (routeData.coordinates.length - 1)));
-        const [lon, lat] = routeData.coordinates[idx];
-        return { at_km: totalKm * f, lat, lon };
-      });
+      // Climb detection is pure geometry, so it's known before the weather arrives.
+      const climbRaw = findSteepestClimb(buildSegments(route.coordinates, route.distance_m, route.duration_s));
+      const wPoints = weatherPoints(route);
 
-      const weatherResults = await Promise.allSettled(
-        weatherPoints.map(async (pt) => {
-          const res = await fetch('/api/weather', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ lat: pt.lat, lon: pt.lon }),
-          });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Weather lookup failed.');
-          return { at_km: pt.at_km, temp_factor: data.temp_factor, headwind_ms: data.wind_ms, ...data };
-        })
-      );
-      const samples = weatherResults.filter((r) => r.status === 'fulfilled').map((r) => r.value);
-      if (samples.length < weatherResults.length) setWeatherWarning(true);
-      setWeatherSamples(samples);
-      setPrimaryWeather(samples[Math.floor(samples.length / 2)] || null);
+      const [climbName, weather, charging] = await Promise.allSettled([
+        climbRaw ? postJson('/api/reverse-geocode', { lat: climbRaw.lat, lon: climbRaw.lon }) : Promise.resolve(null),
+        postJson('/api/weather', { points: wPoints.map(({ lat, lon }) => ({ lat, lon })) }),
+        postJson('/api/charging', { points: chargerSearchPoints(route), radius_km: 15 }),
+      ]);
+      if (stale()) return;
+      setStage('model');
 
-      const r = recompute(
-        tripOrigin,
-        tripDestination,
-        routeData,
+      const samples =
+        weather.status === 'fulfilled' && Array.isArray(weather.value.samples)
+          ? weather.value.samples.map((s, i) => ({ ...s, at_km: wPoints[i].at_km }))
+          : [];
+      const chargers = charging.status === 'fulfilled' ? charging.value.stations || [] : [];
+      const climbLabel = climbName.status === 'fulfilled' && climbName.value?.label ? climbName.value.label : null;
+
+      const nextRun = {
+        origin: trip.origin,
+        destination: trip.destination,
+        route,
         samples,
-        tripPayload,
-        tripBattery,
-        tripTariff,
-        climbResult
-      );
-      setResult(r);
-      setLastTrip({
-        origin: tripOrigin,
-        destination: tripDestination,
-        dist_km: r.dist_km,
-        tariff: tripTariff,
-        vehicleName: vehicle.name,
-        expected_kwh_per_km: r.scenarios.expected.kWh_per_km,
-        best_kwh_per_km: r.scenarios.best.kWh_per_km,
-        worst_kwh_per_km: r.scenarios.worst.kWh_per_km,
+        weatherFailed: samples.length === 0,
+        chargers,
+        chargingFailed: charging.status !== 'fulfilled',
+        elevationMissing: route.coordinates.some((c) => c[2] == null),
+        climb: climbRaw ? { ...climbRaw, name: climbLabel } : null,
+      };
+
+      // Log the trip with the same numbers the screen will show: calibrated energy, and the
+      // arrival battery AFTER the charging plan — not a raw single-leg figure.
+      const r = computeTrip({
+        routeData: route,
+        samples,
+        payloadKg: trip.payload,
+        batteryPct: trip.battery,
+        tariff: trip.tariff,
+        params: vehicle,
       });
+      const plan = planChargingStops({
+        perSeg: r.perSeg,
+        calibrationFactor: r.calibration_factor,
+        chargers,
+        batteryKwh: vehicle.battery_kWh,
+        startSocPct: trip.battery,
+        reservePct: vehicle.reserve_pct,
+        chargerKW,
+      });
+
+      setOrigin(trip.origin);
+      setDestination(trip.destination);
+      setRun(nextRun);
       addTrip({
-        origin: tripOrigin,
-        destination: tripDestination,
-        payload: tripPayload,
-        battery: tripBattery,
-        tariff: tripTariff,
+        origin: trip.origin,
+        destination: trip.destination,
+        vehicleName: vehicle.name,
+        payload: trip.payload,
+        battery: trip.battery,
+        tariff: trip.tariff,
         dist_km: r.dist_km,
         total_kWh: r.total_kWh,
         kWh_per_km: r.kWh_per_km,
-        predicted_full_range_km: r.predicted_full_range_km,
-        arrival_soc_pct: r.arrival_soc_pct,
         cost_per_km: r.cost_per_km,
-        feasible: r.feasible,
+        outcome: plan.status === 'ok' ? 'no-stop' : plan.status === 'needs-stop' ? 'stops' : 'not-possible',
+        stops: plan.stops.length,
+        arrival_soc_pct: plan.final_arrival_soc_pct,
       });
-
-      try {
-        const chargingRes = await fetch('/api/charging', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ lat: midLat, lon: midLon, distance_km: r.dist_km }),
-        });
-        const chargingData = await chargingRes.json();
-        if (!chargingRes.ok) throw new Error('charging lookup failed');
-        const stations = chargingData.stations || [];
-        setChargers(stations);
-      } catch {
-        setChargers([]);
-        setChargingWarning(true);
-      }
     } catch (err) {
+      if (stale()) return;
       setError(err.message || 'Something went wrong. Please try again.');
     } finally {
-      setLoading(false);
+      if (!stale()) {
+        setLoading(false);
+        setStage(null);
+      }
     }
   };
 
@@ -365,239 +301,218 @@ export default function DriverView() {
     selectVehicle(name);
     const preset = VEHICLES.find((v) => v.name === name);
     if (preset) {
+      setPayloadClamped(payload > preset.payload_max_kg);
       setPayload((p) => Math.max(0, Math.min(p, preset.payload_max_kg)));
-      setPayloadClamped(false);
     }
   };
 
   const applyPreset = (preset) => {
     setOrigin(preset.origin);
     setDestination(preset.destination);
-    setPayload(preset.payload);
+    setPayload(Math.min(preset.payload, vehicle.payload_max_kg));
     setBattery(preset.battery);
     setTariff(preset.tariff);
-    handleCalculate(preset);
+    setPayloadClamped(false);
+    handleCalculate({ ...preset, payload: Math.min(preset.payload, vehicle.payload_max_kg) });
   };
 
-  // Recompute live on slider/vehicle changes — no refetch, reuses the already-fetched
-  // route + weather samples + climb info.
-  useEffect(() => {
-    if (!route) return;
-    const r = recompute(origin, destination, route, weatherSamples, payload, battery, tariff, climbInfo);
-    setResult(r);
-    setLastTrip({
-      origin,
-      destination,
-      dist_km: r.dist_km,
+  // Recomputed instantly (no refetch) when payload, battery, tariff or vehicle change.
+  const result = useMemo(() => {
+    if (!run) return null;
+    return computeTrip({
+      routeData: run.route,
+      samples: run.samples,
+      payloadKg: payload,
+      batteryPct: battery,
       tariff,
-      vehicleName: vehicle.name,
-      expected_kwh_per_km: r.scenarios.expected.kWh_per_km,
-      best_kwh_per_km: r.scenarios.best.kWh_per_km,
-      worst_kwh_per_km: r.scenarios.worst.kWh_per_km,
+      params: vehicle,
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [payload, battery, tariff, vehicle]);
+  }, [run, payload, battery, tariff, vehicle]);
 
-  const positions = useMemo(
-    () => (route ? route.coordinates.map(([lon, lat]) => [lat, lon]) : null),
-    [route]
-  );
-
-  // The real worst-case scenario (P1-2) — replaces the earlier flat-penalty stand-in.
-  const worstCaseArrivalPct = result?.scenarios?.worst?.arrival_soc_pct ?? null;
-
-  const governance = useMemo(() => {
-    if (!result) return null;
-    return assessConfidence({
-      weatherFailed: weatherWarning,
-      chargingFailed: chargingWarning,
-      elevationMissing,
-      arrival_soc_pct: result.arrival_soc_pct,
-      reserve_pct: vehicle.reserve_pct,
-      worstCaseArrivalPct,
-    });
-  }, [result, weatherWarning, chargingWarning, elevationMissing, vehicle.reserve_pct, worstCaseArrivalPct]);
-
-  const isFallback = governance ? governance.degraded || governance.uncertain : false;
-
-  // Reachability-based charging plan (replaces the old "always recommend stations[0]"
-  // logic): walks cumulative calibrated energy draw along the route to find where SOC
-  // would breach the reserve buffer, then picks the LAST charger actually reachable
-  // before that point — so a lower starting battery can produce a nearer/different
-  // stop than a higher one on the same route, and a trip that can't reach any charger
-  // is reported honestly instead of showing a negative arrival %.
   const chargePlan = useMemo(() => {
     if (!result) return null;
     return planChargingStops({
       perSeg: result.perSeg,
       calibrationFactor: result.calibration_factor,
-      chargers,
+      chargers: run.chargers,
       batteryKwh: vehicle.battery_kWh,
       startSocPct: battery,
       reservePct: vehicle.reserve_pct,
+      chargerKW,
     });
-  }, [result, chargers, vehicle.battery_kWh, vehicle.reserve_pct, battery]);
+  }, [result, run, vehicle.battery_kWh, vehicle.reserve_pct, battery, chargerKW]);
 
-  const recommendedStop = chargePlan?.stops?.[0]?.charger ?? null;
+  const governance = useMemo(() => {
+    if (!result) return null;
+    return assessConfidence({
+      weatherFailed: run.weatherFailed,
+      chargingFailed: run.chargingFailed,
+      elevationMissing: run.elevationMissing,
+      arrival_soc_pct: result.arrival_soc_pct,
+      reserve_pct: vehicle.reserve_pct,
+      worstCaseArrivalPct: result.scenarios.worst.arrival_soc_pct,
+    });
+  }, [result, run, vehicle.reserve_pct]);
 
-  // Charge time + delivery-window impact (P1-3): only shown when a stop (or sequence
-  // of stops) can actually rescue the trip — never for the infeasible/no-reachable-
-  // charger case. Each stop is assumed to top up to 100% before continuing, matching
-  // planChargingStops' own simulation.
-  const chargeInfo = useMemo(() => {
-    if (!chargePlan || chargePlan.status !== 'needs-stop' || !route) return null;
-    const perStopMinutes = chargePlan.stops.map((s) => chargeMinutesForStop(s, vehicle.battery_kWh, chargerKW));
-    if (perStopMinutes.some((m) => m == null)) return null;
-    const charge_minutes = perStopMinutes.reduce((a, m) => a + m, 0);
+  // The Guarantee view prices the most recent trip — keep it in sync with what's on screen.
+  useEffect(() => {
+    if (!result) return;
+    setLastTrip({
+      origin: run.origin,
+      destination: run.destination,
+      dist_km: result.dist_km,
+      tariff,
+      payload,
+      vehicleName: vehicle.name,
+      expected_kwh_per_km: result.scenarios.expected.kWh_per_km,
+      best_kwh_per_km: result.scenarios.best.kWh_per_km,
+      worst_kwh_per_km: result.scenarios.worst.kWh_per_km,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [result]);
 
-    let windowVerdict = null;
-    const windowHours = Number(deliveryWindow);
-    if (deliveryWindow !== '' && Number.isFinite(windowHours) && windowHours > 0) {
-      const routeHours = route.duration_s / 3600;
-      const totalHours = routeHours + charge_minutes / 60;
-      const slackMinutes = Math.round((windowHours - totalHours) * 60);
-      windowVerdict =
-        slackMinutes >= 0
-          ? { onTime: true, label: 'On time' }
-          : { onTime: false, label: `Risks delivery window by ~${Math.abs(slackMinutes)} min` };
-    }
-    return { charge_minutes, windowVerdict };
-  }, [chargePlan, route, vehicle.battery_kWh, chargerKW, deliveryWindow]);
-
-  // Stand-in trip log: every calculation logs its inputs, model version, confidence,
-  // and whether the governance red-line kicked in — the demo highlight for P0-4.
+  // Developer trip log: model drift check + the governance decision for every calculation.
   useEffect(() => {
     if (!result || !governance) return;
+    console.log(
+      `[EnergyModel] ${run.origin} -> ${run.destination}: physics ${result.physics_kWh_per_km.toFixed(3)} × ${result.calibration_factor.toFixed(3)} = ${result.kWh_per_km.toFixed(3)} kWh/km`
+    );
+    const isHero =
+      run.origin.toLowerCase() === HERO_PRESET.origin.toLowerCase() &&
+      run.destination.toLowerCase() === HERO_PRESET.destination.toLowerCase();
+    if (isHero) {
+      const drift = Math.abs(result.physics_kWh_per_km - CALIBRATION_TARGET_KWH_PER_KM);
+      console.log(
+        `[Calibration target] ${CALIBRATION_TARGET_KWH_PER_KM} kWh/km, got ${result.physics_kWh_per_km.toFixed(3)} (drift ${drift.toFixed(3)}).` +
+          (drift > CALIBRATION_TOLERANCE ? ` Drift exceeds ${CALIBRATION_TOLERANCE}: check config.js tuning knobs.` : ' Within tolerance.')
+      );
+    }
     console.log('[Governance]', {
-      inputs: { origin, destination, payload, battery, tariff, vehicle: vehicle.name },
-      model_version: 'physics-v1',
-      confidence: `${result.confidence_low}-${result.confidence_high}%`,
-      verdict: !result.feasible ? 'needs-charge' : isFallback ? 'uncertain' : 'feasible',
-      fallback_active: isFallback,
+      inputs: { origin: run.origin, destination: run.destination, payload, battery, tariff, vehicle: vehicle.name },
+      model_version: 'physics-v2 (smoothed elevation, directional wind) + linear calibration',
+      confidence: governance.level,
+      plan: chargePlan?.status,
       reasons: governance.reasons,
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [result, governance]);
 
-  const chargingNeed =
-    !result || !chargePlan
-      ? '—'
-      : chargePlan.status === 'ok'
-      ? 'No stop'
-      : chargePlan.status === 'infeasible'
-      ? 'Not feasible'
-      : chargePlan.stops.length === 1
-      ? `Stop at ${chargePlan.stops[0].charger.title}`
-      : `Needs ${chargePlan.stops.length} charge stops`;
+  const positions = useMemo(() => (run ? run.route.coordinates.map(([lon, lat]) => [lat, lon]) : null), [run]);
 
-  // The one number every downstream consumer (metric tile, guidance bullets, the Ask
-  // box) must use instead of the raw result.arrival_soc_pct — that raw figure is a
-  // single-leg physics number and can be deeply negative (e.g. an infeasible Varanasi
-  // trip reads -196%). This is the post-charging-plan figure, clamped >= 0, or null
-  // when genuinely infeasible (no reachable charger).
-  const displayArrivalSocPct =
-    !chargePlan || chargePlan.status === 'infeasible'
-      ? null
-      : Math.round(Math.max(0, chargePlan.final_arrival_soc_pct));
+  const routeChanged =
+    run && (origin.trim().toLowerCase() !== run.origin.toLowerCase() || destination.trim().toLowerCase() !== run.destination.toLowerCase());
 
-  // Surfaced as its own callout on the verdict card (not just a guidance bullet) —
-  // a safe speed to hold on the steepest climb is actionable and safety-relevant, so
-  // it shouldn't depend on the LLM guidance panel loading or choosing to mention it.
-  const climb = result?.notable_climb
-    ? { ...result.notable_climb, recommended_speed_kmh: result.recommended_speed_kmh }
+  // ---- Verdict --------------------------------------------------------------------
+  const reserve = vehicle.reserve_pct;
+  const climb = run?.climb
+    ? {
+        name: run.climb.name,
+        grade_pct: run.climb.grade_pct,
+        length_km: run.climb.length_km,
+        rise_m: run.climb.rise_m,
+        speed_kmh: climbSafeSpeedKmh(result?.avg_speed_kmh, run.climb.grade_pct),
+      }
     : null;
 
-  const verdictProps =
-    result && chargePlan
-      ? chargePlan.status === 'infeasible'
-        ? {
-            // Governance red-line: never show a negative arrival % or a confident
-            // verdict when no charger is reachable before the reserve breach.
-            status: 'danger',
-            headline: 'Not feasible from this start SOC',
-            subline: 'No reachable charger before the reserve buffer would be breached — manual planning advised.',
-          }
-        : isFallback
-        ? {
-            status: 'uncertain',
-            headline: 'Low confidence — manual planning advised',
-            subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km — numbers below still apply, with a wider margin of error`,
-            confidenceLow: Math.max(0, result.confidence_low - 15),
-            confidenceHigh: Math.min(100, result.confidence_high + 5),
-            reasons: governance.reasons,
-            fallbackActive: true,
-            scenarios: result.scenarios,
-            climb,
-          }
-        : chargePlan.status === 'ok'
-        ? {
-            status: 'ok',
-            headline: `You'll make it — arrive ${displayArrivalSocPct}%`,
-            subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km`,
-            confidenceLow: result.confidence_low,
-            confidenceHigh: result.confidence_high,
-            scenarios: result.scenarios,
-            climb,
-          }
-        : {
-            status: 'warn',
-            headline:
-              chargePlan.stops.length === 1
-                ? `Charge once at ${chargePlan.stops[0].charger.title}`
-                : `Needs ${chargePlan.stops.length} charge stops`,
-            subline: `${Math.round(result.dist_km)} km · ${result.kWh_per_km.toFixed(2)} kWh/km`,
-            confidenceLow: result.confidence_low,
-            confidenceHigh: result.confidence_high,
-            scenarios: result.scenarios,
-            climb,
-            chargeInfo,
-            chargerTitle: chargePlan.stops.length === 1 ? chargePlan.stops[0].charger.title : null,
-            children:
-              chargePlan.stops.length > 1 ? (
-                <ul className="mt-3 space-y-1 text-sm text-foreground">
-                  {chargePlan.stops.map((s, i) => (
-                    <li key={i} className="break-words">
-                      Stop {i + 1}: {s.charger.title} (~{Math.round(s.at_km)} km in)
-                    </li>
-                  ))}
-                </ul>
-              ) : null,
-          }
-      : null;
+  const timing = useMemo(() => {
+    if (!result || !chargePlan || chargePlan.status === 'infeasible') return null;
+    const detourMin = chargePlan.stops.reduce((a, s) => a + ((2 * s.detour_km) / DETOUR_SPEED_KMH) * 60, 0);
+    const drive_min = result.duration_s / 60 + detourMin;
+    const charge_min = chargePlan.total_charge_minutes;
+    let windowVerdict = null;
+    const windowHours = Number(deliveryWindow);
+    if (deliveryWindow !== '' && Number.isFinite(windowHours) && windowHours > 0) {
+      const slack = Math.round(windowHours * 60 - (drive_min + charge_min));
+      windowVerdict =
+        slack >= 0
+          ? { onTime: true, label: `Within your ${fmtNum(windowHours, 1)} h window` }
+          : { onTime: false, label: `Misses your ${fmtNum(windowHours, 1)} h window by ~${Math.abs(slack)} min` };
+    }
+    return { drive_min, charge_min, windowVerdict };
+  }, [result, chargePlan, deliveryWindow]);
 
+  let verdict = null;
+  if (result && chargePlan && governance) {
+    const confidence = { level: governance.level, ...CONFIDENCE_COPY[governance.level] };
+    const finalPct = Math.round(Math.max(0, chargePlan.final_arrival_soc_pct ?? 0));
+    if (chargePlan.status === 'infeasible') {
+      verdict = {
+        status: 'danger',
+        headline: "Can't finish this trip as planned",
+        subline:
+          chargePlan.reserve_hit_km != null
+            ? `The battery would reach the ${reserve}% reserve around km ${Math.round(chargePlan.reserve_hit_km)} of ${Math.round(
+                result.dist_km
+              )}, and no working charger is reachable before that.`
+            : 'Even with four charging stops the battery would not last the distance.',
+        reasons: governance.reasons,
+        stops: chargePlan.stops,
+        footnote: 'Try starting with more charge, carrying less load, or choosing a vehicle with a bigger battery.',
+      };
+    } else if (chargePlan.status === 'ok') {
+      const headline =
+        governance.level === 'high'
+          ? "Yes, you'll make it without charging"
+          : governance.level === 'medium'
+          ? 'You should make it, with little to spare'
+          : 'Probably yes, but some live data is missing';
+      verdict = {
+        status: governance.level === 'high' ? 'ok' : 'uncertain',
+        headline,
+        subline: `You'd arrive with about ${finalPct}% battery. ${reserve}% is always kept as a safety reserve.`,
+        confidence,
+        reasons: governance.reasons,
+        band: {
+          worst: result.scenarios.worst.arrival_soc_pct,
+          expected: result.scenarios.expected.arrival_soc_pct,
+          best: result.scenarios.best.arrival_soc_pct,
+          reserve,
+        },
+        climb,
+        timing,
+      };
+    } else {
+      const n = chargePlan.stops.length;
+      verdict = {
+        status: governance.degraded ? 'uncertain' : 'warn',
+        headline: n === 1 ? 'Yes, with one charging stop' : `Yes, with ${n} charging stops`,
+        subline: `The battery alone won't cover ${Math.round(result.dist_km)} km. Charge as planned below and you'd arrive with about ${finalPct}%.`,
+        confidence,
+        reasons: governance.reasons,
+        stops: chargePlan.stops,
+        climb,
+        timing,
+      };
+    }
+  }
+
+  // ---- Inputs ---------------------------------------------------------------------
   const inputsForm = (
     <div className="flex flex-col gap-4">
       <div>
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
-          One-click scenarios
+        <div className="mb-2 flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+          Try an example
+          <InfoHint label="About the examples">
+            Each example fills in the form and runs it straight away. Mumbai → Pune is a full-battery trip over the
+            Western Ghats; the Nashik run starts at 40%, so you can see the charging planner at work.
+          </InfoHint>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" size="sm" onClick={() => applyPreset(HERO_PRESET)} type="button">
+          <Button variant="secondary" size="sm" onClick={() => applyPreset(HERO_PRESET)} type="button" disabled={loading}>
             <Sparkles className="h-3.5 w-3.5 text-accent" aria-hidden="true" />
             {HERO_PRESET.label}
           </Button>
-          <Button variant="secondary" size="sm" onClick={() => applyPreset(NASHIK_PRESET)} type="button">
+          <Button variant="secondary" size="sm" onClick={() => applyPreset(NASHIK_PRESET)} type="button" disabled={loading}>
             {NASHIK_PRESET.label}
           </Button>
         </div>
       </div>
       <div className="h-px bg-border" />
-      <div className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
-        <div className="flex items-center gap-1.5">
+
+      <div className="flex flex-col gap-1.5">
+        <FieldLabel hint="The battery size, payload limit and range claim are representative of published specs for Indian e-trucks in each weight class. The physics settings (drag, rolling resistance and so on) are engineering estimates, editable in Settings.">
           Vehicle
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button type="button" className="text-muted-foreground hover:text-foreground">
-                  <Info className="h-3.5 w-3.5" aria-hidden="true" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                Representative published specs for Indian e-trucks in each GVW class (battery, GVW, payload, range); physics params are engineering estimates.
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        </div>
+        </FieldLabel>
         <Select value={vehicle.name} onValueChange={handleVehicleChange}>
           <SelectTrigger>
             <SelectValue placeholder="Select vehicle" />
@@ -605,40 +520,40 @@ export default function DriverView() {
           <SelectContent>
             {VEHICLES.map((v) => (
               <SelectItem key={v.name} value={v.name}>
-                {v.name} · {v.battery_kWh} kWh · {v.payload_max_kg.toLocaleString()} kg payload
+                {v.name} · {v.battery_kWh} kWh battery · up to {v.payload_max_kg.toLocaleString('en-IN')} kg
               </SelectItem>
             ))}
           </SelectContent>
         </Select>
       </div>
-      <div className="flex flex-col gap-3">
-        <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
-          Origin
-          <PlaceAutocomplete
-            value={origin}
-            onChange={setOrigin}
-            placeholder="e.g. Mumbai"
-            inputClassName="h-10 w-full px-3 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
-          Destination
-          <PlaceAutocomplete
-            value={destination}
-            onChange={setDestination}
-            placeholder="e.g. Pune"
-            inputClassName="h-10 w-full px-3 text-[13.5px] rounded-lg border border-border bg-surface text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-          />
-        </label>
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
-          Payload (kg, max {vehicle.payload_max_kg?.toLocaleString()})
+
+      <label className="flex flex-col gap-1.5">
+        <FieldLabel>From</FieldLabel>
+        <PlaceAutocomplete value={origin} onChange={setOrigin} placeholder="City or address, e.g. Mumbai" inputClassName={INPUT_CLASS} />
+      </label>
+      <label className="flex flex-col gap-1.5">
+        <FieldLabel>To</FieldLabel>
+        <PlaceAutocomplete
+          value={destination}
+          onChange={setDestination}
+          onEnter={() => handleCalculate()}
+          placeholder="City or address, e.g. Pune"
+          inputClassName={INPUT_CLASS}
+        />
+      </label>
+
+      <div className="grid grid-cols-2 gap-3">
+        <label className="flex flex-col gap-1.5">
+          <FieldLabel hint={`Cargo weight, not counting the truck itself. The ${vehicle.name} can carry up to ${vehicle.payload_max_kg?.toLocaleString('en-IN')} kg.`}>
+            Load (kg)
+          </FieldLabel>
           <input
             type="number"
+            inputMode="numeric"
             min={0}
             max={vehicle.payload_max_kg}
-            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+            step={100}
+            className={INPUT_CLASS}
             value={payload}
             onChange={(e) => {
               const raw = Number(e.target.value);
@@ -647,105 +562,116 @@ export default function DriverView() {
               setPayload(Number.isFinite(raw) ? Math.max(0, Math.min(raw, max)) : 0);
             }}
           />
-          {payloadClamped && (
-            <span className="font-normal normal-case text-warning">
-              Clamped to the vehicle's payload range (0–{vehicle.payload_max_kg?.toLocaleString()} kg).
-            </span>
-          )}
         </label>
-        <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
-          Battery (%)
+        <label className="flex flex-col gap-1.5">
+          <FieldLabel hint="How full the battery is when the truck sets off.">Battery at start (%)</FieldLabel>
           <input
             type="number"
-            min="0"
-            max="100"
-            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+            inputMode="numeric"
+            min={0}
+            max={100}
+            className={INPUT_CLASS}
             value={battery}
-            onChange={(e) => setBattery(Number(e.target.value))}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              setBattery(Number.isFinite(n) ? Math.max(0, Math.min(100, n)) : 0);
+            }}
           />
         </label>
-        <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
-          Tariff (₹/kWh)
+        <label className="flex flex-col gap-1.5">
+          <FieldLabel hint="What you pay per unit (kWh) of electricity. Sets the energy cost per km.">Tariff (₹/kWh)</FieldLabel>
           <input
             type="number"
+            inputMode="decimal"
             step="0.1"
-            className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
+            min={0}
+            className={INPUT_CLASS}
             value={tariff}
-            onChange={(e) => setTariff(Number(e.target.value))}
+            onChange={(e) => {
+              const n = Number(e.target.value);
+              setTariff(Number.isFinite(n) ? Math.max(0, n) : 0);
+            }}
+          />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          <FieldLabel hint="Optional. The hours you have to make the delivery. We check driving plus charging time against it.">
+            Deadline (hours)
+          </FieldLabel>
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.5"
+            min="0"
+            placeholder="Optional"
+            className={INPUT_CLASS}
+            value={deliveryWindow}
+            onChange={(e) => setDeliveryWindow(e.target.value)}
           />
         </label>
       </div>
-      <label className="flex flex-col gap-1.5 text-[11.5px] font-medium text-muted-foreground">
-        Delivery window (hours, optional)
-        <input
-          type="number"
-          step="0.5"
-          min="0"
-          placeholder="e.g. 6"
-          className="h-10 text-[13.5px] rounded-lg border border-border bg-surface px-3 text-foreground shadow-[0_1px_1px_rgba(18,23,43,0.03)] outline-none transition-colors placeholder:text-muted-foreground/80 hover:border-[#d6d0c2] focus:border-accent/60 focus:ring-2 focus:ring-accent/20"
-          value={deliveryWindow}
-          onChange={(e) => setDeliveryWindow(e.target.value)}
-        />
-      </label>
-      <Button
-        size="lg"
-        onClick={() => handleCalculate()}
-        disabled={loading || !origin || !destination}
-        type="button"
-      >
-        {loading && <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />}
-        {loading ? 'Optimising…' : 'Optimise Trip'}
+      {payloadClamped && (
+        <p className="-mt-2 text-xs text-warning">
+          Load capped at the {vehicle.name}&apos;s limit of {vehicle.payload_max_kg?.toLocaleString('en-IN')} kg.
+        </p>
+      )}
+
+      <Button size="lg" onClick={() => handleCalculate()} disabled={loading || !origin.trim() || !destination.trim()} type="button">
+        {loading ? (
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+        ) : routeChanged ? (
+          <RefreshCw className="h-4 w-4" aria-hidden="true" />
+        ) : null}
+        {loading ? 'Working it out…' : routeChanged ? 'Plan this new route' : 'Plan trip'}
       </Button>
+      {routeChanged && !loading && (
+        <p className="-mt-1 text-xs leading-relaxed text-warning">
+          You changed the route. The results still show {run.origin} → {run.destination} until you press the button.
+        </p>
+      )}
+      {run && !routeChanged && !loading && (
+        <p className="-mt-1 text-xs leading-relaxed text-muted-foreground">
+          Changing the vehicle, load, battery or tariff updates the results instantly.
+        </p>
+      )}
       {error && (
-        <div className="flex items-start gap-2 rounded-xl border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">
+        <div role="alert" className="flex items-start gap-2 rounded-lg border border-danger/30 bg-danger/[0.06] px-3 py-2 text-sm text-danger">
           <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
           {error}
-        </div>
-      )}
-      {weatherWarning && (
-        <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-          Live weather unavailable — using default conditions.
-        </div>
-      )}
-      {chargingWarning && (
-        <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-          Couldn't fetch nearby chargers — charger markers may be incomplete.
-        </div>
-      )}
-      {elevationMissing && (
-        <div className="rounded-xl border border-warning/30 bg-warning/10 px-3 py-2 text-xs text-warning">
-          Elevation data missing for part of the route — climbs may be under-counted.
         </div>
       )}
     </div>
   );
 
-  // "Your trip plan" — rendered once (never two mounted copies, which would double-fire
-  // the guidance/ask fetches) and placed responsively below: in the empty left column
-  // under the inputs on desktop, or stacked after the verdict/metrics on mobile.
+  // "How we worked it out" — rendered once and placed by layout (see useIsDesktop).
   const tripPlanCard = result && (
     <Card className="p-5">
-      <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">
-        Your trip plan
-      </h3>
-      {result.physics_kWh_per_km != null && (
-        <div className="mb-3 rounded-lg border border-border bg-surface-raised px-3.5 py-3">
-          <div className="text-sm text-foreground">
-            Physics estimate <span className="tabular font-semibold">{result.physics_kWh_per_km.toFixed(2)}</span> kWh/km
-            {' → '}
-            Calibrated <span className="tabular font-semibold text-primary">{result.kWh_per_km.toFixed(2)}</span> kWh/km
-            {' '}
-            <span className="text-muted-foreground">(learned from {result.calibration_trained_on?.toLocaleString()} trips)</span>
-          </div>
-          <div className="mt-1 text-xs text-muted-foreground">{result.calibration_note}</div>
+      <h3 className="mb-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">How we worked it out</h3>
+      <div className="mb-4 rounded-lg border border-border bg-surface-raised px-3.5 py-3 text-[13px] leading-relaxed text-foreground">
+        <div className="flex flex-wrap items-baseline gap-x-1.5">
+          Physics estimate <span className="tabular font-semibold">{result.physics_kWh_per_km.toFixed(2)}</span>
+          <ArrowRight className="h-3 w-3 self-center text-muted-foreground" aria-hidden="true" />
+          AI-calibrated <span className="tabular font-semibold text-primary">{result.kWh_per_km.toFixed(2)}</span> kWh/km
+          <InfoHint label="Physics vs calibrated">
+            The physics model calculates the energy from forces on every stretch of road. A learned correction,
+            fitted on {result.calibration_trained_on.toLocaleString()} past trips, then adjusts for what physics
+            misses in practice. The calibrated figure is the one used everywhere else.
+          </InfoHint>
         </div>
-      )}
-      <GuidancePanel result={result} chargingNeed={chargingNeed} weather={primaryWeather} arrivalSocPct={displayArrivalSocPct} />
+        <p className="mt-1 text-xs text-muted-foreground">{result.calibration_note}</p>
+      </div>
+
+      <EnergyBreakdown breakdown={result.breakdown_kwh} totalKwh={result.total_kWh} />
+
+      <div className="mt-5">
+        <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Driver notes</div>
+        <GuidancePanel result={result} chargePlan={chargePlan} climb={climb} samples={run.samples} />
+      </div>
+
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <AssumptionsPopover />
         <AiModelPanel />
       </div>
-      <AskBox result={result} arrivalSocPct={displayArrivalSocPct} />
+      <AskBox result={result} chargePlan={chargePlan} />
     </Card>
   );
 
@@ -761,38 +687,39 @@ export default function DriverView() {
             Will this e-truck make the trip, and what will each kilometre cost?
           </h1>
         </div>
-        <p className="max-w-sm text-[13px] leading-relaxed text-muted-foreground lg:text-right">
-          Live route, terrain and weather, a physics model calibrated on 1,500 trips, and an honest confidence
-          band, turned into a price per km you can guarantee.
+        <p className="max-w-md text-[13px] leading-relaxed text-muted-foreground lg:text-right">
+          Enter a trip on the left. We read the real truck route, its hills, live weather and chargers along the way,
+          then tell you whether the battery lasts, where to charge, and the cost per km.
         </p>
       </header>
+
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[320px_1.5fr_1fr] lg:items-start">
-        {/* Trip inputs — always visible inline, on mobile and desktop alike. Desktop also
-            gets the Trip Plan panel directly beneath it, filling what used to be empty
-            space in this column. */}
         <div className="flex flex-col gap-4">
           <Card className="p-5">
             <div className="mb-4 flex items-baseline justify-between">
-              <h2 className="font-display text-[22px] font-semibold leading-none text-foreground">Trip details</h2>
-              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Inputs</span>
+              <h2 className="font-display text-[22px] font-semibold leading-none text-foreground">Your trip</h2>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Step 1</span>
             </div>
             {inputsForm}
           </Card>
           {isDesktop && tripPlanCard}
         </div>
 
-        {/* Mobile order: verdict, metrics, trip plan, map. Desktop: map is the center pane. */}
+        {/* Mobile order: verdict + numbers, map, explanation. Desktop: map is the centre pane. */}
         <div className="order-2 h-[320px] overflow-hidden rounded-xl border border-border shadow-[0_1px_1px_rgba(18,23,43,0.03),0_8px_24px_-12px_rgba(18,23,43,0.15)] lg:order-none lg:h-[600px]">
           <RouteMap
             positions={positions}
-            distanceKm={result?.dist_km || (route ? route.distance_m / 1000 : 0)}
-            chargers={chargers}
-            recommendedStop={recommendedStop}
+            distanceKm={result?.dist_km ?? 0}
+            chargers={run?.chargers ?? []}
+            stopIds={chargePlan?.stops?.map((s) => s.charger.id) ?? []}
+            emptyLabel={loading ? 'Planning the route…' : 'Your route will appear here'}
           />
         </div>
 
         <div className="order-1 flex flex-col gap-4 lg:order-none">
-          {!result && !loading && (
+          {loading && <ProgressCard stage={stage} />}
+
+          {!run && !loading && (
             <Card className="overflow-hidden">
               <div className="border-b border-border bg-surface-raised px-5 py-4">
                 <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-accent">How it works</div>
@@ -802,9 +729,9 @@ export default function DriverView() {
               </div>
               <ol className="space-y-4 px-5 py-5">
                 {[
-                  { icon: MapPinned, title: 'Plan the route', text: 'Real road, elevation and live weather along the way.' },
-                  { icon: Gauge, title: 'Get an honest verdict', text: 'Energy per km, arrival battery, charge stops and a confidence band.' },
-                  { icon: ShieldCheck, title: 'Price a guarantee', text: 'Open Guarantee to turn the result into a committed ₹/km.' },
+                  { icon: MapPinned, title: 'Plan the trip', text: 'Pick a vehicle, enter where you are going, the load and the battery level.' },
+                  { icon: Gauge, title: 'Get an honest verdict', text: 'Whether the battery lasts, where to charge if not, energy per km and the cost, each with a plain explanation.' },
+                  { icon: ShieldCheck, title: 'Price a guarantee', text: 'Open Guarantee to turn the trip into a fixed ₹/km price you could commit to.' },
                 ].map(({ icon: Icon, title, text }, i) => (
                   <li key={title} className="flex gap-3.5">
                     <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-border bg-surface text-primary shadow-[0_1px_1px_rgba(18,23,43,0.04)]">
@@ -825,28 +752,47 @@ export default function DriverView() {
                 onClick={() => applyPreset(HERO_PRESET)}
                 className="group flex w-full items-center justify-between border-t border-border px-5 py-3.5 text-left text-[13px] font-medium text-primary transition-colors hover:bg-surface-raised"
               >
-                Run the Mumbai → Pune demo
+                Try it now: Mumbai → Pune
                 <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
               </button>
             </Card>
           )}
-          {loading && !result && (
-            <Card className="p-5">
-              <Skeleton className="mb-3 h-6 w-2/3" />
-              <Skeleton className="mb-2 h-4 w-full" />
-              <Skeleton className="h-4 w-1/2" />
-            </Card>
+
+          {result && !loading && (
+            <>
+              <div className="text-[12.5px] text-muted-foreground">
+                <span className="font-medium text-foreground">
+                  {run.origin} → {run.destination}
+                </span>{' '}
+                · {vehicle.name} · {payload.toLocaleString('en-IN')} kg · starts at {battery}%
+              </div>
+              {verdict && <VerdictCard {...verdict} />}
+              <ResultsPanel
+                result={result}
+                chargePlan={chargePlan}
+                tariff={tariff}
+                reservePct={reserve}
+                batteryKwh={vehicle.battery_kWh}
+              />
+              <CohortAnomalyBanner vehicleName={vehicle.name} expectedKwhPerKm={result.kWh_per_km} />
+              {chargePlan?.status !== 'infeasible' && onNavigate && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate('guarantee')}
+                  className="group flex w-full items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/[0.04] px-4 py-3.5 text-left transition-colors hover:bg-primary/[0.08]"
+                >
+                  <span>
+                    <span className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Next step</span>
+                    <span className="mt-0.5 block text-[13.5px] font-medium text-foreground">
+                      Turn this trip into a guaranteed price per km
+                    </span>
+                  </span>
+                  <ArrowRight className="h-4 w-4 shrink-0 text-primary transition-transform group-hover:translate-x-0.5" aria-hidden="true" />
+                </button>
+              )}
+              {!isDesktop && tripPlanCard}
+            </>
           )}
-
-          {result && (
-            <CohortAnomalyBanner vehicleName={vehicle.name} expectedKwhPerKm={result.kWh_per_km} />
-          )}
-
-          {result && verdictProps && <VerdictCard {...verdictProps} />}
-
-          {result && <ResultsPanel result={result} chargingNeed={chargingNeed} chargePlan={chargePlan} />}
-
-          {result && !isDesktop && tripPlanCard}
         </div>
       </div>
     </div>

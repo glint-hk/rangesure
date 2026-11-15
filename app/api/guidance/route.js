@@ -2,42 +2,47 @@
 // already produced — it must never compute or change a number. Key stays server-side
 // (process.env.GEMINI_API_KEY). If the call fails or the key is missing, falls back to
 // a rule-based summary built only from the input numbers, so the UI never breaks.
-const SYSTEM_PROMPT = `You are a driver-assistance guidance writer for an EV truck trip planner.
-You receive numbers ALREADY computed by a deterministic physics model. Your ONLY job is to
-explain them in 3-4 short, plain-language bullets a truck driver can act on. NEVER compute,
-estimate, or change any number; only use numbers present in the input. Cite the numbers. If a
-named climb is provided, give a safe speed range for it. Stay calm and factual; never overstate
-confidence.`;
+const SYSTEM_PROMPT = `You write short driver notes for an electric-truck trip planner.
+You receive numbers ALREADY computed by a deterministic physics model with a learned calibration.
+Write 3-4 short, plain-language bullets a truck driver or fleet manager can act on.
+Rules:
+- NEVER compute, estimate, round differently or change any number. Only quote numbers exactly as
+  they appear in the input, with their units.
+- Cover, in this order where present: whether the battery lasts and the arrival battery; the
+  charging plan (where, from what % to what %, how long); the steepest climb and the suggested
+  speed; anything weather-related (heat, wind, wet road).
+- No markdown, no headings, no numbering. One sentence per bullet, each on its own line.
+- Be calm and factual; never overstate confidence.`;
 
 const GEMINI_MODEL = 'gemini-2.5-flash';
 
+// Rule-based notes built only from the input numbers — used whenever the model is
+// unavailable, so the panel never sits empty or invents anything.
 function fallbackTips(t) {
   const tips = [];
-
-  if (t.distance_km != null && t.kwh_per_km != null) {
-    tips.push(`This ${Math.round(t.distance_km)} km trip is estimated at ${t.kwh_per_km} kWh/km.`);
+  if (t.charging === 'no stop needed' && t.arrival_battery_pct != null) {
+    tips.push(`No charging stop is needed. You should arrive with about ${t.arrival_battery_pct}% battery.`);
+  } else if (typeof t.charging === 'string' && t.charging.startsWith('not possible')) {
+    tips.push('This trip cannot be completed as planned. Start with more charge or carry less load.');
+  } else if (t.charging) {
+    tips.push(`Charging plan: ${t.charging}.`);
   }
-  if (t.predicted_full_range_km != null) {
-    const arrivalPart = t.arrival_soc_pct != null ? `; expected arrival battery is ${Math.round(t.arrival_soc_pct)}%` : '';
-    tips.push(`Full-battery range is about ${Math.round(t.predicted_full_range_km)} km${arrivalPart}.`);
+  if (t.steepest_climb) {
+    const c = t.steepest_climb;
+    const where = c.near ? ` near ${c.near}` : '';
+    const speed = c.suggested_speed_kmh ? `; hold about ${c.suggested_speed_kmh} km/h` : '';
+    tips.push(`The steepest climb${where} runs ${c.length_km} km at ${c.avg_grade_pct}% on average${speed}.`);
   }
-  if (t.notable_climb) {
-    const name = t.notable_climb.name ? ` at ${t.notable_climb.name}` : '';
-    const grade = t.notable_climb.grade ? ` (grade ${t.notable_climb.grade})` : '';
-    const speed = t.recommended_speed_kmh ? ` — hold around ${t.recommended_speed_kmh} km/h` : '';
-    tips.push(`Watch the climb${name}${grade}${speed}.`);
+  if (t.kwh_per_km != null && t.cost_per_km_inr != null) {
+    tips.push(`Expect ${t.kwh_per_km} kWh/km, about ₹${t.cost_per_km_inr}/km in electricity.`);
   }
-  if (t.cost_per_km != null) {
-    tips.push(`Energy cost works out to ₹${t.cost_per_km}/km at the current tariff.`);
+  if (t.weather) {
+    const w = t.weather;
+    const parts = [`around ${w.temp_c}°C`];
+    if (w.max_wind_kmh != null) parts.push(`winds up to ${w.max_wind_kmh} km/h`);
+    if (w.wet_road) parts.push('wet roads, which raise energy use');
+    tips.push(`Conditions on the route: ${parts.join(', ')}.`);
   }
-  if (t.charging_needed != null) {
-    tips.push(
-      t.charging_needed === 'No stop'
-        ? 'No charging stop should be needed for this trip.'
-        : `Plan for a charging stop: ${t.charging_needed}.`
-    );
-  }
-
   return tips.slice(0, 4);
 }
 
@@ -96,7 +101,8 @@ export async function POST(req) {
 
     const tips = text
       .split('\n')
-      .map((l) => l.replace(/^[-*\d.\s]+/, '').trim())
+      // Strip only list markers ("- ", "* ", "• ", "1. ", "2) ") — never a leading number like "156 km".
+      .map((l) => l.replace(/^\s*(?:[-*•]|\d+[.)])\s+/, '').trim())
       .filter(Boolean);
 
     return Response.json({ tips: tips.length ? tips : text });

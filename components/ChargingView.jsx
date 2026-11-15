@@ -91,7 +91,13 @@ export default function ChargingView() {
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h2 className="mb-4 font-display text-[30px] font-semibold leading-tight text-foreground">Charging network</h2>
+      <div className="mb-5">
+        <h2 className="font-display text-[30px] font-semibold leading-tight text-foreground">Charging network</h2>
+        <p className="mt-1 text-sm leading-relaxed text-muted-foreground">
+          Find public chargers within about 50 km of a place, from Open Charge Map. Stations reported as not working
+          are left out. Plan Trip uses the same data to plan stops along a route.
+        </p>
+      </div>
       <div className="relative mb-4">
         <PlaceAutocomplete
           value={place}
@@ -121,7 +127,7 @@ export default function ChargingView() {
 
       {!searched && !error && (
         <Card className="mb-4 border-dashed p-5 text-sm text-muted-foreground">
-          Start typing a city (3+ letters) to see nearby charging stations within ~50 km.
+          Start typing a city or area (at least 3 letters) to see charging stations nearby.
         </Card>
       )}
       {searched && !loading && !error && stations.length === 0 && (
@@ -150,12 +156,19 @@ export default function ChargingView() {
               key={s.id ?? `${s.lat}-${s.lon}`}
               className="min-w-0 rounded-xl border border-border bg-surface px-3.5 py-2.5 text-sm text-foreground"
             >
-              <div className="truncate break-words" title={s.title}>
+              <div className="truncate font-medium" title={s.title}>
                 {s.title}
               </div>
-              {s.distance_km != null && (
-                <div className="mt-0.5 text-xs text-muted-foreground">{s.distance_km.toFixed(1)} km away</div>
-              )}
+              <div className="mt-0.5 text-xs text-muted-foreground">
+                {s.distance_km != null ? `${s.distance_km.toFixed(1)} km away` : ''}
+                {s.town ? ` · ${s.town}` : ''}
+              </div>
+              <div className="mt-1.5 flex flex-wrap gap-1.5 text-[11px]">
+                <span className="rounded bg-surface-raised px-1.5 py-0.5 text-foreground">
+                  {s.max_power_kw ? `Up to ${Math.round(s.max_power_kw)} kW` : 'Power not listed'}
+                </span>
+                {s.dc && <span className="rounded bg-primary/[0.08] px-1.5 py-0.5 text-primary">DC fast</span>}
+              </div>
             </li>
           ))}
         </ul>
