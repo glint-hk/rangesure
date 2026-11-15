@@ -1,5 +1,6 @@
 """Builds the Dyaus Advisory Point of View as a designed A4 HTML page, then prints it to PDF
-with headless Chromium. Run: python3 pov/build_pdf.py  (from the repo root)."""
+with headless Chromium. Run: python3 pov/build_pdf.py  (from the repo root).
+The same HTML is reused by pov/build_web.py for the web version on dyausadvisory.live."""
 import math, pathlib, subprocess, glob, os
 
 HERE = pathlib.Path(__file__).parent
@@ -37,7 +38,7 @@ def exhibit1():
 
 # ---------- Exhibit 2: risk buffer vs corridor trips ----------
 def exhibit2():
-    rows = [(100, 4.30), (250, 2.75), (500, 1.97), (1500, 1.17), (5000, 0.68), (10000, 0.50), (50000, 0.27)]
+    rows = [(100, 4.16), (250, 2.66), (500, 1.90), (1500, 1.13), (5000, 0.66), (10000, 0.49), (50000, 0.26)]
     L, R, T, B = 52, 620, 14, 150
     lo, hi = math.log10(30), math.log10(50000)
     X = lambda t: L + (math.log10(t) - lo) / (hi - lo) * (R - L)
@@ -57,10 +58,10 @@ def exhibit2():
     for t, v in rows:
         now = t == 1500
         o.append(f'<circle cx="{X(t):.1f}" cy="{Y(v):.1f}" r="{5 if now else 3}" fill="{GOLD if now else "#8C90A3"}"/>')
-    o.append(f'<text x="{X(100)+8:.1f}" y="{Y(4.30)-5:.1f}" font-size="9.5" font-weight="600" fill="{NAVY}">₹4.30</text>')
-    o.append(f'<text x="{X(1500)+6:.1f}" y="{Y(1.17)-22:.1f}" font-size="9.5" font-weight="600" fill="{NAVY}">₹1.17 at 1,500 trips</text>')
-    o.append(f'<text x="{X(1500)+6:.1f}" y="{Y(1.17)-11:.1f}" font-size="8.8" fill="{MUTED}">the prototype\'s corridor today</text>')
-    o.append(f'<text x="{X(50000):.1f}" y="{Y(0.27)-10:.1f}" text-anchor="end" font-size="9.5" font-weight="600" fill="{NAVY}">₹0.27</text>')
+    o.append(f'<text x="{X(100)+8:.1f}" y="{Y(4.16)-5:.1f}" font-size="9.5" font-weight="600" fill="{NAVY}">₹4.16</text>')
+    o.append(f'<text x="{X(1500)+6:.1f}" y="{Y(1.13)-22:.1f}" font-size="9.5" font-weight="600" fill="{NAVY}">₹1.13 at 1,500 trips</text>')
+    o.append(f'<text x="{X(1500)+6:.1f}" y="{Y(1.13)-11:.1f}" font-size="8.8" fill="{MUTED}">the prototype\'s corridor today</text>')
+    o.append(f'<text x="{X(50000):.1f}" y="{Y(0.26)-10:.1f}" text-anchor="end" font-size="9.5" font-weight="600" fill="{NAVY}">₹0.26</text>')
     return f'<svg viewBox="0 0 640 {B+36}" role="img" aria-label="Risk buffer falls as corridor history grows" font-family="Inter">{"".join(o)}</svg>'
 
 SRC = {
@@ -93,6 +94,8 @@ h1, h2, h3, .big, .k, .num, .lead, .q, text {{ font-variant-numeric: lining-nums
 .cover .sub {{ font-size: 11pt; color: #CFD4E6; margin: 0; max-width: 150mm; }}
 .byline {{ margin-top: 4.5mm; padding-top: 3mm; border-top: 1px solid rgba(255,255,255,.16); font-size: 8pt; color: #AEB5CC; display: flex; justify-content: space-between; }}
 .byline b {{ color: #fff; font-weight: 600; }}
+.cover-url {{ margin-top: 2.5mm; font-size: 8.4pt; color: #CFD4E6; position: relative; z-index: 1; }}
+.cover-url a {{ color: #E0B84E; font-weight: 600; text-decoration: underline; text-underline-offset: 2px; }}
 h2 {{ font-family: "Cormorant Garamond"; font-weight: 600; font-size: 16pt; line-height: 1.1; margin: 4.5mm 0 1.2mm; break-after: avoid; }}
 h2 .n {{ color: {GOLD}; margin-right: 2mm; }}
 .lead {{ font-weight: 600; font-size: 9.6pt; margin: 0 0 2mm; }}
@@ -115,7 +118,7 @@ td {{ padding: 1.4mm 2mm; border-bottom: 1px solid {LINE}; vertical-align: top; 
 td:first-child {{ font-weight: 600; white-space: nowrap; }}
 td.num {{ color: {NAVY}; font-weight: 500; }}
 .cta-inline {{ display: inline-block; background: {NAVY}; color: #fff; padding: 1mm 3mm; border-radius: 2px; font-weight: 600; font-size: 8.4pt; }}
-.two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-top: 1mm; }}
+.two {{ display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; margin-top: 1mm; break-inside: avoid; }}
 .callout {{ background: {CREAM}; padding: 3mm 4mm; font-size: 8.4pt; }}
 .callout b {{ display: block; font-size: 8.8pt; margin-bottom: .6mm; }}
 .calls-wrap {{ break-before: page; }}
@@ -144,12 +147,13 @@ td.num {{ color: {NAVY}; font-weight: 500; }}
   <div class="brandrow"><span class="firm">Dyaus Advisory</span><span>Point of View · Transport &amp; Logistics</span></div>
   <h1>From Selling Trucks<br>to Selling Certainty</h1>
   <p class="sub">How AI will reprice Indian road freight, and what OEMs, fleets and financiers should do about it.</p>
-  <div class="byline"><span>By <b>Hrishikesh Kumar</b>, Dyaus Advisory</span><span>November 2026</span></div>
+  <div class="byline"><span>By <b>Dyaus Advisory</b></span><span>November 2026</span></div>
+  <div class="cover-url">Try the prototype: <a href="{APP}">rangesure.vercel.app</a></div>
 </section>
 
 <div class="brief">
   <p class="lead">Over the next five years, AI's largest payoff in Indian road freight will not come from driverless trucks. It will come from turning operating uncertainty into a price someone is willing to guarantee.</p>
-  <p>Trucking has always been a business of educated guesses: how long a trip will take, what it will cost, whether the truck will make it. Diesel hid the cost of those guesses behind a dense refuelling network. Electric trucks remove that cushion. A loaded e-truck on a ghat road can lose a fifth of its range to terrain and weather alone, and fleet owners respond the rational way: they keep buying diesel.</p>
+  <p>Trucking has always been a business of educated guesses: how long a trip will take, what it will cost, whether the truck will make it. Diesel hid the cost of those guesses behind a dense refuelling network. Electric trucks remove that cushion. On a live run over the Western Ghats, a loaded 11-tonne e-truck fell 14% short of its brochure range on a normal day and 27% short on a bad one, from terrain, load and weather alone. Fleet owners respond the rational way: they keep buying diesel trucks.</p>
   <p style="margin:0">We built <b>Dyaus RangeSure</b>, a working AI prototype, to test a simple claim. If an operator can predict cost-per-km within a narrow, honest band, it can <i>commit</i> to that number contractually. The company that can make that commitment changes from selling vehicles to selling certainty.</p>
 </div>
 
@@ -161,12 +165,12 @@ td.num {{ color: {NAVY}; font-weight: 500; }}
   <div class="stat"><div class="big">75%</div><div class="lbl">of truck operators own fewer than five trucks (<a href="{SRC['redseer']}">Redseer</a>)</div></div>
   <div class="stat"><div class="big">3% → 34%</div><div class="lbl">medium and heavy trucks' share of vehicles vs. road CO2 (<a href="{SRC['sfc']}">Smart Freight Centre</a>)</div></div>
 </div>
-<p>Policy is pushing hard: PM E-DRIVE set aside ₹500 crore in July 2025 to support 5,643 e-trucks, with incentives tied to scrapping old vehicles (<a href="{SRC['evr']}">EVreporter</a>). But subsidies lower the purchase price. They do nothing about the question a fleet owner actually asks: <i>will this truck finish my route, and what will each kilometre cost?</i> A brochure range is measured on flat roads in mild weather. Indian freight runs through ghats, 45°C summers and overloaded tail-ends. Until someone answers that question with a number they will stand behind, electrification stays a pilot, not a purchasing decision.</p>
+<p>Policy is pushing hard: PM E-DRIVE set aside ₹500 crore in July 2025 to support 5,643 e-trucks, with incentives tied to scrapping old vehicles (<a href="{SRC['evr']}">EVreporter</a>). But subsidies lower the purchase price. They do nothing about the question a fleet owner actually asks: <i><u>will this truck finish my route, and what will each kilometre cost?</u></i> A brochure range is measured on flat roads in mild weather. Indian freight runs through ghats, 45°C summers and overloaded tail-ends. Until someone answers that question with a number they will stand behind, electrification stays a pilot, not a purchasing decision.</p>
 
 <div class="keep"><h2><span class="n">02</span>Where AI creates value: four layers, rising in worth</h2>
 <p class="lead">AI in transport creates value in four layers. Each rests on the one below and is worth more than it. Most of the market has stopped at the second.</p>
 <figure>
-  <div class="ttl"><span>Exhibit 1</span>Value rises with each layer while competition thins out</div>
+  <div class="ttl"><span>Figure 1</span>Value rises with each layer while competition thins out</div>
   {exhibit1()}
   <figcaption>Source: Dyaus Advisory analysis.</figcaption>
 </figure></div>
@@ -174,25 +178,26 @@ td.num {{ color: {NAVY}; font-weight: 500; }}
 
 <h2><span class="n">03</span>Dyaus RangeSure: all four layers in one working product</h2>
 <p class="lead">RangeSure shows that a small team can build all four layers today, on public data, in a tool a non-technical fleet owner can use.</p>
-<p>Enter an origin, a destination, a payload and a battery level. In seconds it returns a verdict, a confidence band and, if you want one, a guaranteed price. <a class="cta-inline" href="{APP}" style="color:#fff">Try it live: rangesure.vercel.app →</a></p>
+<p>Enter an origin, a destination, a payload and a battery level. In seconds it returns a verdict, a confidence level with a bad-day to good-day range, a charging plan if one is needed and, if you want one, a guaranteed price.</p>
+<p><a class="cta-inline" href="{APP}" style="color:#fff">Try it live: rangesure.vercel.app →</a></p>
 <table>
-  <tr><th>Layer</th><th>What RangeSure does</th><th>Mumbai → Pune, 11-tonne e-truck, 4,000 kg load</th></tr>
-  <tr><td>Predict</td><td>Physics model over real route elevation, live weather at four points and payload, then corrected by a calibration layer learned from 1,500 past trips.</td><td class="num">165 km via the ghat road · 1.09 kWh/km · 183 km real range vs. a 230 km brochure claim</td></tr>
-  <tr><td>Optimise</td><td>Finds the steepest sustained climb, sets an eco-speed for it, and chooses the charging stop and its timing.</td><td class="num">One charge stop named; charge time checked against the delivery window</td></tr>
-  <tr><td>Explain</td><td>A language model turns the numbers into plain guidance. It may explain numbers but is never allowed to invent one.</td><td class="num">85–91% confidence band; best, expected and worst-case arrival battery</td></tr>
-  <tr><td>Underwrite</td><td>Prices a per-km commitment from the uncertainty band and the corridor's trip history.</td><td class="num">₹11.29/km at 96% completion = ₹9.29 energy + ₹1.17 risk buffer + ₹0.84 margin</td></tr>
+  <tr><th>Layer</th><th>What RangeSure does</th><th>Mumbai → Pune, 11-tonne e-truck, 4,000 kg, full battery</th></tr>
+  <tr><td>Predict</td><td>Physics model over the real truck route, smoothed elevation, live weather (including wind direction and rain) at four points, and payload; corrected by a calibration layer learned from 1,500 past trips.</td><td class="num">156 km via the ghat road · 1.01 kWh/km · 198 km real range vs. a 230 km brochure claim</td></tr>
+  <tr><td>Optimise</td><td>Finds the biggest sustained climb and a steady speed for it, and searches every combination of up to four charging stops for the fastest plan.</td><td class="num">Bhor ghat: 7.3 km rising 487 m. No stop at full battery; from 40% on the Nashik run, one charge at a 120 kW station</td></tr>
+  <tr><td>Explain</td><td>A language model turns the numbers into plain guidance. It may explain numbers but is never allowed to invent one.</td><td class="num">Arrive with ~21%, but 7–29% from a bad day to a good day, so the app rates it Medium confidence</td></tr>
+  <tr><td>Underwrite</td><td>Prices a per-km commitment from the uncertainty band and the corridor's trip history.</td><td class="num">₹10.50/km at a 96% guarantee level = ₹8.59 energy + ₹1.13 risk buffer + ₹0.78 margin</td></tr>
 </table>
 <div class="two">
-  <div class="callout"><b>What it proves</b>Two design choices matter more than the model. A <i>governance red line</i>: when a data feed fails or the worst case breaches the reserve, the app refuses to show a confident green. And an <i>honest no</i>: on a thin corridor it declines to quote rather than invent a price.</div>
-  <div class="callout"><b>What it does not yet prove</b>The trip history is synthetic, standing in for real telematics. The pricing model is illustrative, not actuarial. Live weather can tip a borderline trip from one stop to two. These are exactly the gaps a pilot with a real fleet would close.</div>
+  <div class="callout"><b>What it proves</b>Two design choices matter more than the model. A <i>governance red line</i>: when a data feed fails or a bad day would breach the battery reserve, the app refuses to show a confident green and says why. And an <i>honest no</i>: on a thin corridor it declines to quote rather than invent a price.</div>
+  <div class="callout"><b>What it does not yet prove</b>The trip history is synthetic, standing in for real telematics. The pricing model is illustrative, not actuarial. Many public chargers don't list their power, so the planner assumes a modest 30 kW. Live weather can tip a borderline trip from no stop to one. These are exactly the gaps a pilot with a real fleet would close.</div>
 </div>
 
 <div class="keep"><h2><span class="n">04</span>What this means for each player</h2>
 <p class="lead">Once cost-per-km can be guaranteed, value moves from whoever sells the asset to whoever holds the corridor data. The cost of a guarantee falls with every trip logged.</p>
 <figure>
-  <div class="ttl"><span>Exhibit 2</span>The risk buffer falls from ₹4.30 to ₹0.27 per km as corridor history grows</div>
+  <div class="ttl"><span>Figure 2</span>The risk buffer falls from ₹4.16 to ₹0.26 per km as corridor history grows</div>
   {exhibit2()}
-  <figcaption>Risk buffer (₹/km) at a 96% completion guarantee on the Mumbai–Pune trip; energy cost ₹9.29/km held constant. Source: Dyaus RangeSure pricing model (illustrative, not actuarial). A new entrant with no history cannot quote at all.</figcaption>
+  <figcaption>Risk buffer (₹/km, excluding margin) at a 96% guarantee level on the Mumbai–Pune trip; energy cost ₹8.59/km held constant. Source: Dyaus RangeSure pricing model (illustrative, not actuarial). A new entrant with no history cannot quote at all.</figcaption>
 </figure></div>
 <table>
   <tr><th>Player</th><th>What changes</th><th>The move to make now</th></tr>
@@ -212,7 +217,7 @@ td.num {{ color: {NAVY}; font-weight: 500; }}
     <div class="proof">The first company to publish one sets the reference price everyone else is measured against.</div></div></div>
   <div class="call"><div class="num">2</div><div class="body"><h3>Pay fleets in price for their data.</h3>
     <p>No small operator holds enough trips to be underwritten alone, and 75% run fewer than five trucks. Offer them a lower guaranteed rate in exchange for their telematics: data-for-discount. Whoever pools the long tail of small fleets first builds a moat that money alone cannot copy.</p>
-    <div class="proof">On our model, 100 → 1,500 logged trips cuts the risk buffer from ₹4.30 to ₹1.17 per km.</div></div></div>
+    <div class="proof">On our model, 100 → 1,500 logged trips cuts the risk buffer from ₹4.16 to ₹1.13 per km.</div></div></div>
   <div class="call"><div class="num">3</div><div class="body"><h3>Make "I don't know" a feature.</h3>
     <p>Insist that every AI number carries its confidence band, its source and a red line where it hands back to a human. Then turn that discipline into a <i>range certificate</i> attached to each corridor, which a lender can price a loan against and an insurer can price cover against.</p>
     <div class="proof">In a market flooded with confident AI, the system that admits uncertainty is the one trusted with capital.</div></div></div>
@@ -231,14 +236,15 @@ td.num {{ color: {NAVY}; font-weight: 500; }}
   <div class="links">Try the prototype: <a href="{APP}">rangesure.vercel.app</a><br>Talk to us about a pilot: <a href="{SITE}">dyausadvisory.live</a></div>
 </div>
 
-<div class="sources"><b>Sources.</b> NCAER, <i>Assessment of Logistics Cost in India</i>, via <a href="{SRC['ncaer']}">ITLN</a> · NITI Aayog, <i>Transforming Trucking in India</i>, via <a href="{SRC['niti']}">Outlook Business</a> · <a href="{SRC['redseer']}">Redseer</a>, Dec 2024 · <a href="{SRC['sfc']}">Smart Freight Centre</a> via PTI, Sept 2025 · <a href="{SRC['evr']}">EVreporter</a>, PM E-DRIVE e-truck guidelines, July 2025. RangeSure figures come from live runs of the prototype; its trip history and corridor volumes are synthetic and its pricing model is illustrative, not actuarial.</div>
+<div class="sources"><b>Sources.</b> NCAER, <i>Assessment of Logistics Cost in India</i>, via <a href="{SRC['ncaer']}">ITLN</a> · NITI Aayog, <i>Transforming Trucking in India</i>, via <a href="{SRC['niti']}">Outlook Business</a> · <a href="{SRC['redseer']}">Redseer</a>, Dec 2024 · <a href="{SRC['sfc']}">Smart Freight Centre</a> via PTI, Sept 2025 · <a href="{SRC['evr']}">EVreporter</a>, PM E-DRIVE e-truck guidelines, July 2025. RangeSure figures come from a live run of the prototype on 15 November 2026 (Mumbai → Pune, 11-tonne e-truck, 4,000 kg, full battery, 27–33 °C); live weather moves them a little from run to run. Its trip history and corridor volumes are synthetic and its pricing model is illustrative, not actuarial.</div>
 </div>
 </body></html>"""
 
-html_path = HERE / "Dyaus_PoV_Selling_Certainty.html"
-html_path.write_text(HTML, encoding="utf-8")
-chrome = sorted(glob.glob(os.path.expanduser("~/Library/Caches/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell")))[-1]
-pdf = HERE / "Dyaus_PoV_Selling_Certainty.pdf"
-subprocess.run([chrome, "--disable-gpu", "--no-pdf-header-footer", "--virtual-time-budget=8000",
-                f"--print-to-pdf={pdf}", html_path.as_uri()], check=True, capture_output=True)
-print("wrote", pdf)
+if __name__ == "__main__":
+    html_path = HERE / "Dyaus_PoV_Selling_Certainty.html"
+    html_path.write_text(HTML, encoding="utf-8")
+    chrome = sorted(glob.glob(os.path.expanduser("~/Library/Caches/ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell")))[-1]
+    pdf = HERE / "Dyaus_PoV_Selling_Certainty.pdf"
+    subprocess.run([chrome, "--disable-gpu", "--no-pdf-header-footer", "--virtual-time-budget=8000",
+                    f"--print-to-pdf={pdf}", html_path.as_uri()], check=True, capture_output=True)
+    print("wrote", pdf)
