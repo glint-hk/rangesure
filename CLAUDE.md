@@ -196,8 +196,8 @@ listed and all numbers still shown; a degraded needs-stop trip still shows its s
 Snaps OCM chargers within 10 km of the route, keeps the fastest per 15 km stretch (≤16), and
 EXHAUSTIVELY searches ordered combinations of up to 4 stops, simulating each: battery at each
 charger's real position minus the detour, charge just enough to reach the next stop when a faster
-charger lies ahead (else enough to finish with reserve + 5% cushion, capped at 90%), charge time at
-min(Settings max kW, station kW) with half rate above 80%, +15 min overhead per stop. Picks the
+charger lies ahead (else enough to finish with reserve, plus a 5% cushion only while below 80%), up to 100%, charge time at
+min(Settings max kW, station kW — 30 kW assumed when unlisted, flagged on the stop) with half rate above 80%, +15 min overhead per stop. Picks the
 fastest valid plan. Infeasible plans report `reserve_hit_km`. app/api/charging does a corridor search
 (`points` every ~30 km, 15 km radius, merged/deduped), drops non-operational stations, and returns
 `max_power_kw`, `dc`, `town`.

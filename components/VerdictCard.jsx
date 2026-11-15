@@ -85,6 +85,7 @@ function StopList({ stops }) {
                 Arrive with {clampPct(s.arrival_soc_pct)}%, charge to {clampPct(s.depart_soc_pct)}%
                 {s.charge_minutes ? ` · about ${fmtDuration(s.charge_minutes)}` : ''}
                 {s.power_kw ? ` at ${Math.round(s.power_kw)} kW` : ''}
+                {s.power_assumed ? ' (power not listed, so a modest 30 kW is assumed)' : ''}
               </div>
             </div>
           </div>
